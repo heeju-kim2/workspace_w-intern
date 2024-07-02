@@ -18,6 +18,7 @@ class ConcatDataset(Dataset):
             "input_ids": [],
             "attention_mask": [],
             "labels": [],
+            "summary": [],
             }
 
         for sample in tqdm(self.dataset, desc="Preprocessing dataset", dynamic_ncols=True):

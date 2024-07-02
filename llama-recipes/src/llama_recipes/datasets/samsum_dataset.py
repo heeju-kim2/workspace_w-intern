@@ -30,6 +30,7 @@ def get_preprocessed_samsum(dataset_config, tokenizer, split):
             "input_ids": prompt + summary,
             "attention_mask" : [1] * (len(prompt) + len(summary)),
             "labels": [-100] * len(prompt) + summary,
+            "summary": summary,
             }
 
         return sample

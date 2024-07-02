@@ -3,9 +3,9 @@ export LOCAL_RANK=0
 export RANK=0
 export WORLD_SIZE=1
 
-# model_name="Llama-2-7b-chat-hf"
-model_name="Meta-Llama-3-8B-Instruct"
-model_path="models/${model_name}"
+model_name="Llama-2-7b-chat-hf"
+# model_name="Meta-Llama-3-8B-Instruct"
+model_path="../models/${model_name}"
 num_epochs=3
 batch_size_training=1
 gradient_accumulation_steps=4
@@ -15,10 +15,10 @@ lr=1e-4
 
 
 # # bf16 only
-# output_dir="samsum_outputs/${model_name}/bf16/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
+# output_dir="../samsum_outputs/${model_name}/bf16/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
 # mkdir -p $output_dir
 # torchrun --nnodes 1 --nproc_per_node 1 \
-#         llama-recipes/recipes/finetuning/finetuning.py \
+#         llama-recipes/src/finetuning.py \
 #         --enable_fsdp --use_peft --peft_method lora --dataset samsum_dataset \
 #         --lr $lr --num_epochs $num_epochs --batch_size_training $batch_size_training \
 #         --gradient_accumulation_steps $gradient_accumulation_steps --weight_decay $weight_decay \
@@ -36,10 +36,10 @@ lr=1e-4
 
 
 # bf16 + fp32 mixed precision
-output_dir="samsum_outputs/${model_name}/mixed/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
+output_dir="../samsum_outputs/${model_name}/mixed/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
 mkdir -p $output_dir
 torchrun --nnodes 1 --nproc_per_node 1 \
-        llama-recipes/recipes/finetuning/finetuning.py \
+        llama-recipes/src/finetuning.py \
         --enable_fsdp --use_peft --peft_method lora --dataset samsum_dataset \
         --lr $lr --num_epochs $num_epochs --batch_size_training $batch_size_training \
         --gradient_accumulation_steps $gradient_accumulation_steps --weight_decay $weight_decay \
@@ -59,10 +59,10 @@ torchrun --nnodes 1 --nproc_per_node 1 \
 
 
 # # fp32 only
-# output_dir="samsum_outputs/${model_name}/fp32/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
+# output_dir="../samsum_outputs/${model_name}/fp32/ep_${num_epochs}_lr_${lr}_bs_${batch_size}_wd_${weight_decay}"
 # mkdir -p $output_dir
 # torchrun --nnodes 1 --nproc_per_node 1 \
-#         llama-recipes/recipes/finetuning/finetuning.py \
+#         llama-recipes/src/finetuning.py \
 #         --enable_fsdp --use_peft --peft_method lora --dataset samsum_dataset \
 #         --lr $lr --num_epochs $num_epochs --batch_size_training $batch_size_training \
 #         --gradient_accumulation_steps $gradient_accumulation_steps --weight_decay $weight_decay \

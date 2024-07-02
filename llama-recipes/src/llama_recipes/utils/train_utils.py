@@ -18,7 +18,7 @@ from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
 from tqdm import tqdm
 from transformers import LlamaTokenizer
 import json
-
+import evaluate
 
 from llama_recipes.model_checkpointing import save_model_checkpoint, save_model_and_optimizer_sharded, save_optimizer_checkpoint
 from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
@@ -129,6 +129,8 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             with profile(train_config,local_rank) as profile_context:
                 for step, batch in enumerate(train_dataloader):
+                    if 'summary' in batch.keys():
+                        del batch['summary']
                     total_train_steps += 1
                     # stop when the maximum number of training steps is reached
                     if train_config.max_train_step > 0 and total_train_steps > train_config.max_train_step:
@@ -328,6 +330,7 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
         world_size = int(os.environ["WORLD_SIZE"])
     model.eval()
     eval_preds = []
+    eval_labels = []
     val_step_loss = []
     val_step_perplexity = []
     eval_loss = 0.0  # Initialize evaluation loss
@@ -340,6 +343,13 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 if not train_config.enable_fsdp or local_rank==0:
                     print("max eval steps reached, stopping evaluation, total_eval_steps: ", total_eval_steps - 1)
                 break
+
+            eval_labels.extend(
+                tokenizer.batch_decode(batch['summary'].cpu().numpy(), skip_special_tokens=True)
+            )
+            if 'summary' in batch.keys():
+                del batch['summary']
+
             for key in batch.keys():
                 if train_config.enable_fsdp:
                     batch[key] = batch[key].to(local_rank)
@@ -383,10 +393,19 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     else:
         print(f" {eval_ppl=} {eval_epoch_loss=}")
 
+    rouge_score = get_rouge(eval_preds=eval_preds, test_labels=eval_labels)
+    print(rouge_score)
+    if len(eval_labels) != len(eval_preds):
+        print("dataset: ", len(eval_labels), "preds: ",len(eval_preds))
+        print("label length, prediction length mismatched!")
+
     if wandb_run:
         wandb_run.log({
                         'eval/perplexity': eval_ppl,
                         'eval/loss': eval_epoch_loss,
+                        'eval/rouge1' : rouge_score['rouge1'],
+                        'eval/rouge2' : rouge_score['rouge2'],
+                        'eval/rougeL' : rouge_score['rougeL'],
                     }, commit=False)
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
@@ -552,3 +571,12 @@ def save_to_json(output_filename, train_step_loss, train_epoch_loss, train_step_
     }
     with open(output_filename, "w") as f:
         json.dump(metrics_data, f)
+
+def get_rouge(eval_preds, test_labels):
+    """
+    Calculate the rouge score
+    """
+    rouge = evaluate.load('rouge')
+    scores = rouge.compute(predictions=eval_preds, references=test_labels)
+
+    return scores
