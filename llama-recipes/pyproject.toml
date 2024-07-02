@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llama-recipes"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Hamid Shojanazeri", email="hamidnazeri@meta.com" },
   { name="Matthias Reso", email="mreso@meta.com" },
@@ -39,3 +39,8 @@ packages = ["src/llama_recipes"]
 
 [tool.hatch.metadata.hooks.requirements_txt]
 files = ["requirements.txt"]
+
+[tool.pytest.ini_options]
+markers = [
+    "skip_missing_tokenizer: skip tests when we can not access meta-llama/Llama-2-7b-hf on huggingface hub (Log in with `huggingface-cli login` to unskip).",
+]
