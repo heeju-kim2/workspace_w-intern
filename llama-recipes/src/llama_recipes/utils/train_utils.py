@@ -344,10 +344,10 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                     print("max eval steps reached, stopping evaluation, total_eval_steps: ", total_eval_steps - 1)
                 break
 
-            eval_labels.extend(
-                tokenizer.batch_decode(batch['summary'].cpu().numpy(), skip_special_tokens=True)
-            )
             if 'summary' in batch.keys():
+                eval_labels.extend(
+                    tokenizer.batch_decode(batch['summary'].cpu().numpy(), skip_special_tokens=True)
+                )
                 del batch['summary']
 
             for key in batch.keys():
@@ -393,20 +393,20 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     else:
         print(f" {eval_ppl=} {eval_epoch_loss=}")
 
-    rouge_score = get_rouge(eval_preds=eval_preds, test_labels=eval_labels)
-    print(rouge_score)
-    if len(eval_labels) != len(eval_preds):
-        print("dataset: ", len(eval_labels), "preds: ",len(eval_preds))
-        print("label length, prediction length mismatched!")
+    log_dict = {
+                'eval/perplexity': eval_ppl,
+                'eval/loss': eval_epoch_loss,
+    }
+
+    if train_config.dataset == "samsum_datset":
+        rouge_score = get_rouge(eval_preds=eval_preds, test_labels=eval_labels)
+        print(rouge_score)
+        log_dict.update(rouge_score)
+    elif train_config.dataset == "alpaca_dataset":
+        pass
 
     if wandb_run:
-        wandb_run.log({
-                        'eval/perplexity': eval_ppl,
-                        'eval/loss': eval_epoch_loss,
-                        'eval/rouge1' : rouge_score['rouge1'],
-                        'eval/rouge2' : rouge_score['rouge2'],
-                        'eval/rougeL' : rouge_score['rougeL'],
-                    }, commit=False)
+        wandb_run.log(log_dict, commit=False)
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
 

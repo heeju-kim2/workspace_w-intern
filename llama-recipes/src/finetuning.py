@@ -204,6 +204,7 @@ def main(**kwargs):
             model.to("cuda")
 
     dataset_config = generate_dataset_config(train_config, kwargs)
+    dataset_config.data_path="workspace_w-intern/llama-recipes/" + dataset_config.data_path
 
      # Load and preprocess the dataset for training and validation
     dataset_train = get_preprocessed_dataset(

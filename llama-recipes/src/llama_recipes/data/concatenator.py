@@ -20,6 +20,9 @@ class ConcatDataset(Dataset):
             "labels": [],
             "summary": [],
             }
+        
+        if 'summary' not in self.dataset[0].keys():
+            del buffer["summary"]
 
         for sample in tqdm(self.dataset, desc="Preprocessing dataset", dynamic_ncols=True):
             buffer = {k: v + sample[k] for k,v in buffer.items()}
