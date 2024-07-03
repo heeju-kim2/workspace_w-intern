@@ -35,13 +35,25 @@ def get_rouge(eval_preds, eval_labels):
 
     return scores
 
-# model_name = "../../models/Llama-2-7b-chat-hf"
-model_name = "SalmanFaroz/Llama-2-7b-samsum"
+def setup_wandb():
+    try:
+        import wandb
+    except ImportError:
+        raise ImportError(
+            "You are trying to use wandb which is not currently installed. "
+            "Please install it using pip install wandb"
+        )
+    from llama_recipes.configs import wandb_config as WANDB_CONFIG
+    run = wandb.init(project="prefix")
+    return run
+
+model_name = "models/Llama-2-7b-chat-hf"
+# model_name = "SalmanFaroz/Llama-2-7b-samsum"
 lr = 3e-2
-num_epochs = 1
+num_epochs = 3
 batch_size = 1
 
-# setup()
+setup()
 
 if torch.distributed.is_initialized():
     clear_gpu_cache(0)
@@ -49,29 +61,29 @@ if torch.distributed.is_initialized():
 
 model = LlamaForCausalLM.from_pretrained(model_name)
 
-# peft_config = PrefixTuningConfig(task_type="CAUSAL_LM", num_virtual_tokens=20)
-# model = get_peft_model(model, peft_config)
-# model.print_trainable_parameters()
-# fsdp_config = FSDP_CONFIG()
-# rank = 0
+peft_config = PrefixTuningConfig(task_type="CAUSAL_LM", num_virtual_tokens=20)
+model = get_peft_model(model, peft_config)
+model.print_trainable_parameters()
+fsdp_config = FSDP_CONFIG()
+rank = 0
 
-# mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank)
-# my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, LlamaDecoderLayer)
+mixed_precision_policy, wrapping_policy = get_policies(fsdp_config, rank)
+my_auto_wrapping_policy = fsdp_auto_wrap_policy(model, LlamaDecoderLayer)
 
-# device_id = 0
+device_id = 0
 
-# model = FSDP(
-#     model,
-#     auto_wrap_policy= my_auto_wrapping_policy,
-#     cpu_offload= None,
-#     mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
-#     sharding_strategy=fsdp_config.sharding_strategy,
-#     device_mesh=None,
-#     device_id=device_id,
-#     limit_all_gathers=True,
-#     sync_module_states=False,
-#     param_init_fn=None,
-# )
+model = FSDP(
+    model,
+    auto_wrap_policy= my_auto_wrapping_policy,
+    cpu_offload= None,
+    mixed_precision=mixed_precision_policy if not fsdp_config.pure_bf16 else None,
+    sharding_strategy=fsdp_config.sharding_strategy,
+    device_mesh=None,
+    device_id=device_id,
+    limit_all_gathers=True,
+    sync_module_states=False,
+    param_init_fn=None,
+)
 
 # Load the tokenizer and add special tokens
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -94,13 +106,16 @@ from tqdm import tqdm
 
 device = "cuda"
 model = model.to(device)
+# wandb_run = setup_wandb()
+wandb_run = None
 
 for epoch in range(num_epochs):
     model.train()
     total_loss = 0
-    for step, batch in enumerate(tqdm(train_dataloader)):
-        break
+    for step, batch in enumerate(tqdm(train_dataloader, desc="training")):
+        del batch['summary']
         batch = {k: v.to(device) for k, v in batch.items()}
+        print("INFERENCE START")
         outputs = model(**batch)
         loss = outputs.loss
         total_loss += loss.detach().float()
@@ -108,12 +123,16 @@ for epoch in range(num_epochs):
         optimizer.step()
         lr_scheduler.step()
         optimizer.zero_grad()
+        if wandb_run is not None:
+            wandb_run.log({
+                "train/loss":loss.detach().float(),
+                })
 
     model.eval()
     eval_loss = 0
     eval_preds = []
     eval_labels = []
-    for step, batch in enumerate(tqdm(eval_dataloader)):
+    for step, batch in enumerate(tqdm(eval_dataloader, desc="evaluation")):
         labels = batch['summary'].cpu().numpy()
         del batch['summary']
 
@@ -127,15 +146,22 @@ for epoch in range(num_epochs):
         )
 
         eval_labels.extend(
-            # tokenizer.batch_decode(batch['labels'].cpu().numpy(), skip_special_tokens=True)
             tokenizer.batch_decode(labels, skip_special_tokens=True)
         )
 
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     eval_ppl = torch.exp(eval_epoch_loss)
-    # train_epoch_loss = total_loss / len(train_dataloader)
-    # train_ppl = torch.exp(train_epoch_loss)
+    train_epoch_loss = total_loss / len(train_dataloader)
+    train_ppl = torch.exp(train_epoch_loss)
     rouge_score = get_rouge(eval_preds=eval_preds, eval_labels=eval_labels)
     print(rouge_score)
-    print(f"{epoch=}: {eval_ppl=} {eval_epoch_loss=}")
-    # print(f"{epoch=}: {train_ppl=} {train_epoch_loss=} {eval_ppl=} {eval_epoch_loss=}")
+    # print(f"{epoch=}: {eval_ppl=} {eval_epoch_loss=}")
+    print(f"{epoch=}: {train_ppl=} {train_epoch_loss=} {eval_ppl=} {eval_epoch_loss=}")
+    if wandb_run is not None:
+        wandb_run.log({
+            'eval/perplexity' : eval_ppl,
+            'eval/loss': eval_epoch_loss,
+            'eval/rouge1' : rouge_score['rouge1'],
+            'eval/rouge2' : rouge_score['rouge2'],
+            'eval/rougeL' : rouge_score['rougeL'],
+        })
