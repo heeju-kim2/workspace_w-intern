@@ -35,7 +35,7 @@ def get_rouge(eval_preds, eval_labels):
 
     return scores
 
-# model_name = "models/Llama-2-7b-chat-hf"
+# model_name = "../../models/Llama-2-7b-chat-hf"
 model_name = "SalmanFaroz/Llama-2-7b-samsum"
 lr = 3e-2
 num_epochs = 1
