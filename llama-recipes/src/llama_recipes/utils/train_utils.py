@@ -25,7 +25,8 @@ from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
 from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
-import llama_recipes.datasets.gsm8k.dataset as gsds
+from llama_recipes.utils.config_utils import get_dataloader_kwargs
+from llama_recipes.datasets.samsum_dataset import get_rouge_dataset
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
     tokenizer.pad_token_id = 0
@@ -131,8 +132,6 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
             with profile(train_config,local_rank) as profile_context:
                 for step, batch in enumerate(train_dataloader):
-                    if 'summary' in batch.keys():
-                        del batch['summary']
                     total_train_steps += 1
                     # stop when the maximum number of training steps is reached
                     if train_config.max_train_step > 0 and total_train_steps > train_config.max_train_step:
@@ -281,6 +280,14 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                     print(f"best eval loss on epoch {epoch+1} is {best_val_loss}")
             val_loss.append(float(best_val_loss))
             val_prep.append(float(eval_ppl))
+
+            # calculate rouge score for samsum
+            if train_config.dataset == "samsum_dataset":
+                dataset, summaries = get_rouge_dataset(train_config, tokenizer)
+                val_dl_kwargs = get_dataloader_kwargs(train_config, dataset, tokenizer, "val")
+                rouge_loader = torch.utils.data.DataLoader(dataset, num_workers=train_config.num_workers_dataloader, pin_memory=True, **val_dl_kwargs)
+                _ = evaluation(model, train_config, rouge_loader, local_rank, tokenizer, wandb_run, log_rouge=True, summaries=summaries)
+
         if train_config.enable_fsdp:
             if rank==0:
                 print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
@@ -316,7 +323,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
     return results
 
-def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb_run):
+def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb_run, log_rouge=False, summaries=None):
     """
     Evaluates the model on the given dataloader
 
@@ -341,6 +348,7 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     if train_config.dataset == "gsm8k_dataset":
         eval_labels = eval_dataloader.dataset.dataset.labels
     elif train_config.dataset == "samsum_dataset":
+        # eval_labels = get_summaries()
         pass
 
     with MemoryTrace() as memtrace:
@@ -351,23 +359,6 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 if not train_config.enable_fsdp or local_rank==0:
                     print("max eval steps reached, stopping evaluation, total_eval_steps: ", total_eval_steps - 1)
                 break
-
-            if train_config.dataset == "samsum_dataset":
-                eval_labels.extend(
-                    tokenizer.batch_decode(batch['summary'].cpu().numpy(), skip_special_tokens=True)
-                )
-                del batch['summary']
-            # elif train_config.dataset == "custom_dataset":
-            #     for inputs in tokenizer.batch_decode(copy.deepcopy(batch['input_ids']).cpu().numpy()):
-            #         # print(gsds.extract_answer(inputs))
-            #         # eval_labels.extend(
-            #         #     [gsds.extract_answer(inputs)]
-            #         # )
-            #         print(batch['answer'])
-            #         eval_labels.extend(
-            #             [batch['answer']]
-            #         )
-            #     del batch['answer']
 
             for key in batch.keys():
                 if train_config.enable_fsdp:
@@ -393,14 +384,14 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 tokenizer.batch_decode(preds.detach().cpu().numpy(), skip_special_tokens=True)
             )
 
-    file_path = "temp.txt"
-    with open(file_path, "w") as file:
-        idx = 1
-        for p in eval_preds:
-            file.write(str(idx) + ". out: " + p[-50:] + "\n")
-            file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
-            # file.write(str(idx) + ". " + p + "\n")
-            idx += 1
+    # file_path = "temp.txt"
+    # with open(file_path, "w") as file:
+    #     idx = 1
+    #     for p in eval_preds:
+    #         file.write(str(idx) + ". out: " + p[-50:] + "\n")
+    #         file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
+    #         # file.write(str(idx) + ". " + p + "\n")
+    #         idx += 1
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
@@ -426,10 +417,12 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 'eval/loss': eval_epoch_loss,
     }
 
-    if train_config.dataset == "samsum_datset":
-        rouge_score = get_rouge(eval_preds=eval_preds, test_labels=eval_labels)
+    if log_rouge:
+        rouge_score = get_rouge(eval_preds=eval_preds, test_labels=summaries[:len(eval_preds)])
+        # print(eval_preds)
+        # print(summaries[:len(eval_preds)])
         print(rouge_score)
-        log_dict.update(rouge_score)
+        log_dict = rouge_score
     elif train_config.dataset == "alpaca_dataset":
         pass
 
