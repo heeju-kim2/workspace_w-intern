@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from datetime import datetime
 import contextlib
-
+import copy
 
 import torch
 import torch.cuda.nccl as nccl
@@ -25,6 +25,8 @@ from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
 from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
+import llama_recipes.datasets.gsm8k.dataset as gsds
+
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
     tokenizer.pad_token_id = 0
     tokenizer.padding_side = "left"
@@ -335,6 +337,12 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     val_step_perplexity = []
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
+
+    if train_config.dataset == "gsm8k_dataset":
+        eval_labels = eval_dataloader.dataset.dataset.labels
+    elif train_config.dataset == "samsum_dataset":
+        pass
+
     with MemoryTrace() as memtrace:
         for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
             total_eval_steps += 1
@@ -344,11 +352,22 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                     print("max eval steps reached, stopping evaluation, total_eval_steps: ", total_eval_steps - 1)
                 break
 
-            if 'summary' in batch.keys():
+            if train_config.dataset == "samsum_dataset":
                 eval_labels.extend(
                     tokenizer.batch_decode(batch['summary'].cpu().numpy(), skip_special_tokens=True)
                 )
                 del batch['summary']
+            # elif train_config.dataset == "custom_dataset":
+            #     for inputs in tokenizer.batch_decode(copy.deepcopy(batch['input_ids']).cpu().numpy()):
+            #         # print(gsds.extract_answer(inputs))
+            #         # eval_labels.extend(
+            #         #     [gsds.extract_answer(inputs)]
+            #         # )
+            #         print(batch['answer'])
+            #         eval_labels.extend(
+            #             [batch['answer']]
+            #         )
+            #     del batch['answer']
 
             for key in batch.keys():
                 if train_config.enable_fsdp:
@@ -373,6 +392,15 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
             eval_preds.extend(
                 tokenizer.batch_decode(preds.detach().cpu().numpy(), skip_special_tokens=True)
             )
+
+    file_path = "temp.txt"
+    with open(file_path, "w") as file:
+        idx = 1
+        for p in eval_preds:
+            file.write(str(idx) + ". out: " + p[-50:] + "\n")
+            file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
+            # file.write(str(idx) + ". " + p + "\n")
+            idx += 1
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
