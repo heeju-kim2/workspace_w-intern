@@ -26,7 +26,8 @@ from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
 from llama_recipes.utils.config_utils import get_dataloader_kwargs
-from llama_recipes.datasets.samsum_dataset import get_rouge_dataset
+from llama_recipes.datasets.samsum_dataset import prepare_samsum_data
+from llama_recipes.data.concatenator import ConcatDataset
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
     tokenizer.pad_token_id = 0
@@ -283,10 +284,97 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
             # calculate rouge score for samsum
             if train_config.dataset == "samsum_dataset":
-                dataset, summaries = get_rouge_dataset(train_config, tokenizer)
-                val_dl_kwargs = get_dataloader_kwargs(train_config, dataset, tokenizer, "val")
-                rouge_loader = torch.utils.data.DataLoader(dataset, num_workers=train_config.num_workers_dataloader, pin_memory=True, **val_dl_kwargs)
-                _ = evaluation(model, train_config, rouge_loader, local_rank, tokenizer, wandb_run, log_rouge=True, summaries=summaries)
+                rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
+                rouge_labels = []
+                rouge_results = []
+                rouge_inputs = []
+
+                lengths = [len(d['input_ids']) for d in rouge_dataset]
+                import numpy as np
+                ids = np.argsort(lengths, kind='mergesort')
+
+                import copy
+                # packing 말고 padding strategy로 batch 진행
+                # data -> sampler.py에서 sampler import
+                # sampler에서 length 순서로 정렬 후 batch 생성 -> 데이터 순서 달라짐
+                # 정렬한 순서 = ids => instructions, summaries ids로 순서 일치
+                rouge_config = copy.deepcopy(train_config)
+                rouge_config.batching_strategy = "padding"
+                rouge_config.val_batch_size = 19
+
+                val_dl_kwargs = get_dataloader_kwargs(rouge_config, rouge_dataset, tokenizer, "val")
+
+                rouge_loader = torch.utils.data.DataLoader(
+                    rouge_dataset,
+                    num_workers=train_config.num_workers_dataloader,
+                    pin_memory=True,
+                    **val_dl_kwargs,
+                )
+                idx = 0
+                for step, batch in enumerate(tqdm(rouge_loader, desc="calculating Rouge")):
+                    with torch.no_grad():
+                        outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
+                        print(outputs)
+  
+                        rouge_result = tokenizer.batch_decode(
+                            outputs.detach().cpu().numpy(), skip_special_tokens=True
+                        )
+                        print(rouge_result)
+                        rouge_input = tokenizer.batch_decode(
+                            batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True
+                        )
+
+                        for r in rouge_result:
+                            rouge_results.append(r[len(instructions[ids[idx]]): ])
+                            rouge_labels.append(summaries[ids[idx]])
+                            # print(instructions[ids[idx]])
+                            # print(summaries[ids[idx]])
+                            # print(r)
+                            # print(r[len(instructions[ids[idx]]): ])
+                            idx += 1
+                        
+                        rouge_inputs.extend(rouge_input)
+                        
+                        if step == 1:
+                            break
+                
+                # # drop_last로 잘린 data에 대한 evaluation
+                # ids = ids[rouge_config.val_batch_size * (len(ids) // rouge_config.val_batch_size): ]
+                # print(ids)
+                # for idx in ids:
+                #   idx = int(idx)
+                #     with torch.no_grad():
+                #         outputs = model.generate(input_ids=rouge_dataset[idx].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
+
+                #         rouge_result = tokenizer.decode(
+                #             outputs.detach().cpu().numpy(), skip_special_tokens=True
+                #         )
+
+                #         if rouge_result[len(instructions[idx]): ] in rouge_results:
+                #             print("it's 중복!")
+                #         rouge_results.append(rouge_result[len(instructions[idx]): ])
+                
+                # print(len(rouge_results))
+                # print(len(rouge_labels))
+                # print(rouge_results)
+                # print(rouge_labels)
+                if len(rouge_labels) != len(rouge_results):
+                    print("In train_utils rouge_results and rouge_labels length mismatched")
+                rouge = get_rouge(rouge_results, rouge_labels[:len(rouge_results)])
+                print(rouge)
+                import json
+                rouge_dict = []
+                for r, l, i in zip(rouge_results, rouge_labels, rouge_inputs):
+                    rouge_dict.append({
+                        'input' : i,
+                        'output' : r,
+                        'label' : l,
+                    })
+                with open(train_config.output_dir + '/rouge_res.json', 'w') as f :
+                    json.dump(rouge_dict, f, indent=4)
+
+                if wandb_run:
+                    wandb_run.log(rouge)
 
         if train_config.enable_fsdp:
             if rank==0:
@@ -323,7 +411,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
     return results
 
-def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb_run, log_rouge=False, summaries=None):
+def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb_run):
     """
     Evaluates the model on the given dataloader
 
@@ -417,14 +505,14 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 'eval/loss': eval_epoch_loss,
     }
 
-    if log_rouge:
-        rouge_score = get_rouge(eval_preds=eval_preds, test_labels=summaries[:len(eval_preds)])
-        # print(eval_preds)
-        # print(summaries[:len(eval_preds)])
-        print(rouge_score)
-        log_dict = rouge_score
-    elif train_config.dataset == "alpaca_dataset":
-        pass
+    # if log_rouge:
+    #     rouge_score = get_rouge(eval_preds=eval_preds, test_labels=summaries[:len(eval_preds)])
+    #     # print(eval_preds)
+    #     # print(summaries[:len(eval_preds)])
+    #     print(rouge_score)
+    #     log_dict = rouge_score
+    # elif train_config.dataset == "alpaca_dataset":
+    #     pass
 
     if wandb_run:
         wandb_run.log(log_dict, commit=False)
