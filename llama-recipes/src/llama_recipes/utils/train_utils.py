@@ -29,7 +29,7 @@ from llama_recipes.utils.flop_utils import FlopMeasure
 from llama_recipes.datasets import get_gsm8k_dataset
 from llama_recipes.utils.config_utils import get_dataloader_kwargs
 from llama_recipes.datasets.samsum_dataset import prepare_samsum_data
-from llama_recipes.datasets.gsm8k.dataset import extract_answer
+from llama_recipes.datasets.gsm8k.dataset import find_number
 from llama_recipes.data.concatenator import ConcatDataset
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
@@ -446,7 +446,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 file_path = "temp.txt"
                 with open(file_path, "w") as file:
                     for p in em_preds:
-                        em_ans = extract_answer(p)
+                        em_ans = find_number(p)
                         if em_ans == em_labels[idx]:
                             num_correct += 1
 
@@ -473,7 +473,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
                         with torch.no_grad():
                             input_ids = torch.tensor([batch['input_ids']]).to('cuda:0')
-                            outputs = model.generate(input_ids=input_ids, temperature=1e-2, max_new_tokens=300)
+                            outputs = model.generate(input_ids=input_ids, temperature=1e-2, max_new_tokens=1000)
                         
                         # preds = torch.argmax(outputs.logits, -1)
                         em_preds.extend(
@@ -482,16 +482,13 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                         em_inputs.extend(
                             tokenizer.batch_decode(input_ids.detach().cpu().numpy(), skip_special_tokens=True)
                         )
-
-                        if step == 2:
-                            break
                 
                 num_correct = 0
                 num_eval = len(em_preds)
                 idx = 0
                 em_dict = []
                 for p in em_preds:
-                    em_ans = extract_answer(p)
+                    em_ans = find_number(p)
                     if em_ans == em_labels[idx]:
                         num_correct += 1
                     
