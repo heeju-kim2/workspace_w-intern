@@ -14,6 +14,7 @@ def get_gsm8k_dataset(
             examples=examples,
             only_qns=True
         )
+        return dataset
     else:
         examples = get_examples("test")
 

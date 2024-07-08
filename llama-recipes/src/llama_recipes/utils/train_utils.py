@@ -344,7 +344,6 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                     print("In train_utils rouge_results and rouge_labels length mismatched")
                 rouge = get_rouge(rouge_results, rouge_labels[:len(rouge_results)])
                 print(rouge)
-                import json
                 rouge_dict = []
                 for r, l, i in zip(rouge_results, rouge_labels, rouge_inputs):
                     rouge_dict.append({
@@ -352,6 +351,8 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                         'output' : r,
                         'label' : l,
                     })
+                
+                import json
                 with open(train_config.output_dir + '/rouge_res.json', 'w') as f :
                     json.dump(rouge_dict, f, indent=4)
 
@@ -469,47 +470,43 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 with MemoryTrace() as memtrace:
                     for step, batch in enumerate(tqdm(em_dataset,colour="green", desc="EM Epoch", dynamic_ncols=True)):
                         key = 'input_ids'
-                        print(batch)
-                        for key in batch.keys():
-                            print(key)
-                            print(type(batch[key]))
-                            print(len(batch[key]))
-                    
+
                         with torch.no_grad():
-                            outputs = model.generate(input_ids=torch.tensor(batch['input_ids']).to('cuda:0'), temperature=1e-2, max_new_tokens=300)
+                            input_ids = torch.tensor([batch['input_ids']]).to('cuda:0')
+                            outputs = model.generate(input_ids=input_ids, temperature=1e-2, max_new_tokens=300)
                         
                         # preds = torch.argmax(outputs.logits, -1)
                         em_preds.extend(
-                            tokenizer.decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
+                            tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
                         )
                         em_inputs.extend(
-                            tokenizer.deocde(torch.tensor(batch['input_ids']).detach().cpu().numpy(), skip_special_tokens=True)
+                            tokenizer.batch_decode(input_ids.detach().cpu().numpy(), skip_special_tokens=True)
                         )
 
-                        print(em_preds)
-                        print(em_inputs)
-
-                        exit(5)
-                        
                         if step == 2:
                             break
                 
                 num_correct = 0
                 num_eval = len(em_preds)
                 idx = 0
-                file_path = "temp.txt"
-                with open(file_path, "w") as file:
-                    for p in em_preds:
-                        em_ans = extract_answer(p)
-                        if em_ans == em_labels[idx]:
-                            num_correct += 1
+                em_dict = []
+                for p in em_preds:
+                    em_ans = extract_answer(p)
+                    if em_ans == em_labels[idx]:
+                        num_correct += 1
+                    
+                    em_dict.append({
+                        'input ' : em_inputs[idx],
+                        'output' : p[len(em_inputs[idx]): ],
+                        'answer' : em_labels[idx],
+                        'extracted ans' : em_ans,
+                    })
 
-                        file.write(str(idx) + ". inp: " + em_inputs[idx] + "\n")
-                        file.write(str(idx) + ". out: " + p + "\n")
-                        file.write(str(idx) + ". ans: " + em_labels[idx] + "\n")
-                        file.write(str(idx) + ". em : " + em_ans + "\n")
-
-                        idx += 1
+                    idx += 1
+                
+                import json
+                with open(train_config.output_dir + '/em_res.json', 'w') as f :
+                    json.dump(em_dict, f, indent=4)
                 
                 print("EM: ", num_correct / num_eval)
 
