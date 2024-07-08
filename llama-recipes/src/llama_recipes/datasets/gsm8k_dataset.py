@@ -7,6 +7,13 @@ def get_gsm8k_dataset(
 
     if split == "train":
         examples = get_examples("train")
+    elif split == "EM":
+        examples = get_examples("test")
+        dataset = GSMDataset(
+            tokenizer=tokenizer,
+            examples=examples,
+            only_qns=True
+        )
     else:
         examples = get_examples("test")
 
@@ -16,4 +23,3 @@ def get_gsm8k_dataset(
     )
 
     return dataset
-

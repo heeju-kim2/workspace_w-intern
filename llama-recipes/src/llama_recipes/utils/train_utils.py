@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime
 import contextlib
 import copy
+import numpy as np
 
 import torch
 import torch.cuda.nccl as nccl
@@ -25,8 +26,10 @@ from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
 from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
+from llama_recipes.datasets import get_gsm8k_dataset
 from llama_recipes.utils.config_utils import get_dataloader_kwargs
 from llama_recipes.datasets.samsum_dataset import prepare_samsum_data
+from llama_recipes.datasets.gsm8k.dataset import extract_answer
 from llama_recipes.data.concatenator import ConcatDataset
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
@@ -283,38 +286,35 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             val_prep.append(float(eval_ppl))
 
             # calculate rouge score for samsum
-            if train_config.dataset == "samsum_dataset":
+            if train_config.dataset == "None": # Samsum Batch
                 rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
                 rouge_labels = []
                 rouge_results = []
                 rouge_inputs = []
 
                 lengths = [len(d['input_ids']) for d in rouge_dataset]
-                import numpy as np
                 ids = np.argsort(lengths, kind='mergesort')
 
-                import copy
                 # packing 말고 padding strategy로 batch 진행
                 # data -> sampler.py에서 sampler import
                 # sampler에서 length 순서로 정렬 후 batch 생성 -> 데이터 순서 달라짐
                 # 정렬한 순서 = ids => instructions, summaries ids로 순서 일치
                 rouge_config = copy.deepcopy(train_config)
                 rouge_config.batching_strategy = "padding"
-                rouge_config.val_batch_size = 19
+                rouge_config.val_batch_size = 6
 
-                val_dl_kwargs = get_dataloader_kwargs(rouge_config, rouge_dataset, tokenizer, "val")
+                rouge_dl_kwargs = get_dataloader_kwargs(rouge_config, rouge_dataset, tokenizer, "val")
 
                 rouge_loader = torch.utils.data.DataLoader(
                     rouge_dataset,
                     num_workers=train_config.num_workers_dataloader,
                     pin_memory=True,
-                    **val_dl_kwargs,
+                    **rouge_dl_kwargs,
                 )
                 idx = 0
                 for step, batch in enumerate(tqdm(rouge_loader, desc="calculating Rouge")):
                     with torch.no_grad():
                         outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
-                        print(outputs)
   
                         rouge_result = tokenizer.batch_decode(
                             outputs.detach().cpu().numpy(), skip_special_tokens=True
@@ -323,6 +323,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                         rouge_input = tokenizer.batch_decode(
                             batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True
                         )
+                        print(rouge_input)
 
                         for r in rouge_result:
                             rouge_results.append(r[len(instructions[ids[idx]]): ])
@@ -333,31 +334,12 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                             # print(r[len(instructions[ids[idx]]): ])
                             idx += 1
                         
+                        # rouge_results.extend(rouge_result)
                         rouge_inputs.extend(rouge_input)
                         
-                        if step == 1:
+                        if step ==1 :
                             break
                 
-                # # drop_last로 잘린 data에 대한 evaluation
-                # ids = ids[rouge_config.val_batch_size * (len(ids) // rouge_config.val_batch_size): ]
-                # print(ids)
-                # for idx in ids:
-                #   idx = int(idx)
-                #     with torch.no_grad():
-                #         outputs = model.generate(input_ids=rouge_dataset[idx].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
-
-                #         rouge_result = tokenizer.decode(
-                #             outputs.detach().cpu().numpy(), skip_special_tokens=True
-                #         )
-
-                #         if rouge_result[len(instructions[idx]): ] in rouge_results:
-                #             print("it's 중복!")
-                #         rouge_results.append(rouge_result[len(instructions[idx]): ])
-                
-                # print(len(rouge_results))
-                # print(len(rouge_labels))
-                # print(rouge_results)
-                # print(rouge_labels)
                 if len(rouge_labels) != len(rouge_results):
                     print("In train_utils rouge_results and rouge_labels length mismatched")
                 rouge = get_rouge(rouge_results, rouge_labels[:len(rouge_results)])
@@ -375,6 +357,161 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
                 if wandb_run:
                     wandb_run.log(rouge)
+            
+            elif train_config.dataset == "samsum_dataset": # Samsum one by one
+                rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
+
+                rouge_results = []
+                rouge_labels = []
+                rouge_inputs = []
+                step = 0
+
+                for instruct, summary in tqdm(zip(instructions, summaries), desc="calculating Rouge"):
+                    with torch.no_grad():
+                        input_ids = tokenizer(instruct, return_tensors="pt").input_ids.cuda()
+                        outputs = model.generate(input_ids=input_ids, max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
+  
+                        rouge_result = tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)[0]
+                        rouge_input = tokenizer.batch_decode(input_ids.detach().cpu().numpy(), skip_special_tokens=True)[0]
+                        
+                        rouge_results.append(rouge_result[len(instruct): ])
+                        rouge_inputs.append(rouge_input)
+                
+                if len(summaries) != len(rouge_results):
+                    print("In train_utils rouge_results and rouge_labels length mismatched")
+
+                rouge = get_rouge(rouge_results, summaries[:len(rouge_results)])
+                print(rouge)
+                import json
+                rouge_dict = []
+                for r, s, i in zip(rouge_results, summaries[:len(rouge_results)], rouge_inputs):
+                    rouge_dict.append({
+                        'input' : i,
+                        'output' : r,
+                        'label' : s,
+                    })
+                with open(train_config.output_dir + '/rouge_res.json', 'w') as f :
+                    json.dump(rouge_dict, f, indent=4)
+
+                if wandb_run:
+                    wandb_run.log(rouge)
+
+            elif train_config.dataset == "None": # gsm8k-batch
+                # qns + ans가 아닌 qns만 input으로 들어가는 dataset
+                em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
+                em_config = copy.deepcopy(train_config)
+
+                lengths = [len(d['input_ids']) for d in em_dataset]
+                ids = np.argsort(lengths, kind='mergesort')
+
+                em_config.batching_strategy = "padding"
+                em_config.val_batch_size = 6
+
+                em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
+                em_dataloader = torch.utils.data.DataLoader(
+                    em_dataset,
+                    num_workers=train_config.num_workers_dataloader,
+                    pin_memory=True,
+                    **em_dl_kwargs,
+                )
+
+                em_preds = []
+                em_inputs = []
+                em_labels = em_dataloader.dataset.labels
+
+                with MemoryTrace() as memtrace:
+                    for step, batch in enumerate(tqdm(em_dataloader,colour="green", desc="EM Epoch", dynamic_ncols=True)):
+                        key = 'input_ids'
+                        if train_config.enable_fsdp:
+                            batch[key] = batch[key].to(local_rank)
+                        else:
+                            batch[key] = batch[key].to('cuda:0')
+                    
+                        with torch.no_grad():
+                            outputs = model.generate(input_ids=batch['input_ids'], temperature=1e-2, max_new_tokens=300)
+                        
+                        # preds = torch.argmax(outputs.logits, -1)
+                        em_preds.extend(
+                            tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
+                        )
+                        em_inputs.extend(
+                            tokenizer.batch_decode(batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True)
+                        )
+                        break
+                
+                num_correct = 0
+                num_eval = len(em_preds)
+                idx = 0
+                file_path = "temp.txt"
+                with open(file_path, "w") as file:
+                    for p in em_preds:
+                        em_ans = extract_answer(p)
+                        if em_ans == em_labels[idx]:
+                            num_correct += 1
+
+                        file.write(str(idx) + ". inp: " + em_inputs[idx] + "\n")
+                        file.write(str(idx) + ". out: " + p + "\n")
+                        file.write(str(idx) + ". ans: " + em_labels[idx] + "\n")
+                        file.write(str(idx) + ". em : " + em_ans + "\n")
+
+                        idx += 1
+                
+                print("EM: ", num_correct / num_eval)
+                    
+            elif train_config.dataset == "gsm8k_dataset": # gsm8k one by one
+                # qns + ans가 아닌 qns만 input으로 들어가는 dataset
+                em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
+
+                em_preds = []
+                em_inputs = []
+                em_labels = em_dataset.labels
+
+                with MemoryTrace() as memtrace:
+                    for step, batch in enumerate(tqdm(em_dataset,colour="green", desc="EM Epoch", dynamic_ncols=True)):
+                        key = 'input_ids'
+                        print(batch)
+                        for key in batch.keys():
+                            print(key)
+                            print(type(batch[key]))
+                            print(len(batch[key]))
+                    
+                        with torch.no_grad():
+                            outputs = model.generate(input_ids=torch.tensor(batch['input_ids']).to('cuda:0'), temperature=1e-2, max_new_tokens=300)
+                        
+                        # preds = torch.argmax(outputs.logits, -1)
+                        em_preds.extend(
+                            tokenizer.decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
+                        )
+                        em_inputs.extend(
+                            tokenizer.deocde(torch.tensor(batch['input_ids']).detach().cpu().numpy(), skip_special_tokens=True)
+                        )
+
+                        print(em_preds)
+                        print(em_inputs)
+
+                        exit(5)
+                        
+                        if step == 2:
+                            break
+                
+                num_correct = 0
+                num_eval = len(em_preds)
+                idx = 0
+                file_path = "temp.txt"
+                with open(file_path, "w") as file:
+                    for p in em_preds:
+                        em_ans = extract_answer(p)
+                        if em_ans == em_labels[idx]:
+                            num_correct += 1
+
+                        file.write(str(idx) + ". inp: " + em_inputs[idx] + "\n")
+                        file.write(str(idx) + ". out: " + p + "\n")
+                        file.write(str(idx) + ". ans: " + em_labels[idx] + "\n")
+                        file.write(str(idx) + ". em : " + em_ans + "\n")
+
+                        idx += 1
+                
+                print("EM: ", num_correct / num_eval)
 
         if train_config.enable_fsdp:
             if rank==0:
@@ -472,14 +609,27 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 tokenizer.batch_decode(preds.detach().cpu().numpy(), skip_special_tokens=True)
             )
 
-    # file_path = "temp.txt"
-    # with open(file_path, "w") as file:
-    #     idx = 1
-    #     for p in eval_preds:
-    #         file.write(str(idx) + ". out: " + p[-50:] + "\n")
-    #         file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
-    #         # file.write(str(idx) + ". " + p + "\n")
-    #         idx += 1
+    # if train_config.dataset == "gsm8k_dataset":
+    #     file_path = "temp.txt"
+    #     num_eval = len(eval_preds)
+    #     num_correct = 0
+    #     with open(file_path, "w") as file:
+    #         idx = 1
+    #         for p in eval_preds:
+    #             eval_ans = extract_answer(p)
+    #             if eval_ans == eval_labels[idx-1]:
+    #                 num_correct += 1
+
+    #             file.write(str(idx) + ". out: " + p[-100:] + "\n")
+    #             file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
+    #             file.write(str(idx) + ". eval_ans : " + eval_ans + "\n")
+    #             # file.write(str(idx) + ". p: " + p + "\n")
+    #             idx += 1
+            
+    #         print("EM: ", num_correct / num_eval)
+        
+
+
 
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
@@ -504,15 +654,6 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 'eval/perplexity': eval_ppl,
                 'eval/loss': eval_epoch_loss,
     }
-
-    # if log_rouge:
-    #     rouge_score = get_rouge(eval_preds=eval_preds, test_labels=summaries[:len(eval_preds)])
-    #     # print(eval_preds)
-    #     # print(summaries[:len(eval_preds)])
-    #     print(rouge_score)
-    #     log_dict = rouge_score
-    # elif train_config.dataset == "alpaca_dataset":
-    #     pass
 
     if wandb_run:
         wandb_run.log(log_dict, commit=False)

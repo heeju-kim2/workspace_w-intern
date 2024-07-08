@@ -23,11 +23,11 @@ def get_examples(split):
     return examples
 
 
-ANS_RE = re.compile(r"#### (\-?[0-9\.\,]+)")
 INVALID_ANS = "[invalid]"
-
+# PROMPT = f"Solve given question: {{question}} and Answer ### number"
 
 def extract_answer(completion):
+    ANS_RE = re.compile(r"#### (\-?[0-9\.\,]+)")
     match = ANS_RE.search(completion)
     if match:
         match_str = match.group(1).strip()
@@ -44,7 +44,7 @@ def is_correct(model_completion, gt_example):
 
 # Batch Econding
 class GSMDataset(torch.utils.data.Dataset):
-    def __init__(self, tokenizer, examples, loss_on_prefix=True):
+    def __init__(self, tokenizer, examples, loss_on_prefix=False, only_qns=False):
         self.examples = examples
         self.qns = [tokenizer.bos_token + ex["question"] for ex in self.examples]
         self.ans = [ex["answer"] + tokenizer.eos_token for ex in self.examples]
@@ -52,6 +52,7 @@ class GSMDataset(torch.utils.data.Dataset):
         self.ans = tokenizer(self.ans, padding=False)
         self.labels = [extract_answer(ex["answer"]) for ex in self.examples]
         self.loss_on_prefix = loss_on_prefix
+        self.only_qns = only_qns
         # self.max_len = max(
         #     [
         #         len(self.qns["input_ids"][i]) + len(self.ans["input_ids"][i])
@@ -68,13 +69,20 @@ class GSMDataset(torch.utils.data.Dataset):
         ans_tokens = self.ans["input_ids"][idx]
         # pad_tokens = [0] * (self.max_len - len(qn_tokens) - len(ans_tokens))
         # tokens = qn_tokens + ans_tokens + pad_tokens
-        mask = (
-            ([int(self.loss_on_prefix)] * len(qn_tokens))
-            + ([1] * len(ans_tokens))
-            # + ([0] * len(pad_tokens))
-        )
+        if not self.only_qns:
+            mask = (
+                ([int(self.loss_on_prefix)] * len(qn_tokens))
+                + ([1] * len(ans_tokens))
+                # + ([0] * len(pad_tokens))
+            )
 
-        tokens = qn_tokens + ans_tokens
+            tokens = qn_tokens + ans_tokens
+        else:
+            mask = (
+                [int(self.loss_on_prefix)] * len(qn_tokens)
+            )
+
+            tokens = qn_tokens
 
         # tokens = torch.tensor(tokens)
         # mask = torch.tensor(mask)
