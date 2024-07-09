@@ -286,11 +286,12 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             val_prep.append(float(eval_ppl))
 
             # calculate rouge score for samsum
-            if train_config.dataset == "None": # Samsum Batch
+            if train_config.dataset == "samsum_dataset": # Samsum Batch
                 rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
                 rouge_labels = []
                 rouge_results = []
                 rouge_inputs = []
+                rouge_orgn = []
 
                 lengths = [len(d['input_ids']) for d in rouge_dataset]
                 ids = np.argsort(lengths, kind='mergesort')
@@ -301,7 +302,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 # 정렬한 순서 = ids => instructions, summaries ids로 순서 일치
                 rouge_config = copy.deepcopy(train_config)
                 rouge_config.batching_strategy = "padding"
-                rouge_config.val_batch_size = 6
+                rouge_config.val_batch_size = 15
 
                 rouge_dl_kwargs = get_dataloader_kwargs(rouge_config, rouge_dataset, tokenizer, "val")
 
@@ -315,51 +316,44 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 for step, batch in enumerate(tqdm(rouge_loader, desc="calculating Rouge")):
                     with torch.no_grad():
                         outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
-  
+
                         rouge_result = tokenizer.batch_decode(
                             outputs.detach().cpu().numpy(), skip_special_tokens=True
                         )
-                        print(rouge_result)
+
                         rouge_input = tokenizer.batch_decode(
                             batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True
                         )
-                        print(rouge_input)
 
                         for r in rouge_result:
                             rouge_results.append(r[len(instructions[ids[idx]]): ])
                             rouge_labels.append(summaries[ids[idx]])
-                            # print(instructions[ids[idx]])
-                            # print(summaries[ids[idx]])
-                            # print(r)
-                            # print(r[len(instructions[ids[idx]]): ])
+                            rouge_orgn.append(r)
                             idx += 1
                         
-                        # rouge_results.extend(rouge_result)
                         rouge_inputs.extend(rouge_input)
-                        
-                        if step ==1 :
-                            break
                 
                 if len(rouge_labels) != len(rouge_results):
                     print("In train_utils rouge_results and rouge_labels length mismatched")
                 rouge = get_rouge(rouge_results, rouge_labels[:len(rouge_results)])
                 print(rouge)
                 rouge_dict = []
-                for r, l, i in zip(rouge_results, rouge_labels, rouge_inputs):
+                for r, l, i, o in zip(rouge_results, rouge_labels, rouge_inputs, rouge_orgn):
                     rouge_dict.append({
                         'input' : i,
                         'output' : r,
                         'label' : l,
+                        'orgn' : o,
                     })
                 
                 import json
-                with open(train_config.output_dir + '/rouge_res.json', 'w') as f :
+                with open(train_config.output_dir + f'/rouge_res_step{epoch}.json', 'w') as f :
                     json.dump(rouge_dict, f, indent=4)
 
                 if wandb_run:
                     wandb_run.log(rouge)
             
-            elif train_config.dataset == "samsum_dataset": # Samsum one by one
+            elif train_config.dataset == "None": # Samsum one by one
                 rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
 
                 rouge_results = []
@@ -397,7 +391,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 if wandb_run:
                     wandb_run.log(rouge)
 
-            elif train_config.dataset == "None": # gsm8k-batch
+            elif train_config.dataset == "gsm8k_dataset": # gsm8k-batch
                 # qns + ans가 아닌 qns만 input으로 들어가는 dataset
                 em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
                 em_config = copy.deepcopy(train_config)
@@ -406,7 +400,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 ids = np.argsort(lengths, kind='mergesort')
 
                 em_config.batching_strategy = "padding"
-                em_config.val_batch_size = 6
+                em_config.val_batch_size = 15
 
                 em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
                 em_dataloader = torch.utils.data.DataLoader(
@@ -443,23 +437,33 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 num_correct = 0
                 num_eval = len(em_preds)
                 idx = 0
-                file_path = "temp.txt"
-                with open(file_path, "w") as file:
-                    for p in em_preds:
-                        em_ans = find_number(p)
-                        if em_ans == em_labels[idx]:
-                            num_correct += 1
+                em_dict = []
+                for p in em_preds:
+                    em_ans = find_number(p)
+                    if em_ans == em_labels[ids[idx]]:
+                        num_correct += 1
+                    
+                    em_dict.append({
+                        'input ' : em_inputs[idx],
+                        'output' : p[len(em_inputs[idx]): ],
+                        'answer' : em_labels[ids[idx]],
+                        'extracted ans' : em_ans,
+                    })
 
-                        file.write(str(idx) + ". inp: " + em_inputs[idx] + "\n")
-                        file.write(str(idx) + ". out: " + p + "\n")
-                        file.write(str(idx) + ". ans: " + em_labels[idx] + "\n")
-                        file.write(str(idx) + ". em : " + em_ans + "\n")
-
-                        idx += 1
+                    idx += 1
                 
+                import json
+                with open(train_config.output_dir + f'/em_res_step{epoch+1}.json', 'w') as f :
+                    json.dump(em_dict, f, indent=4)
+                
+                if wandb_run:
+                    wandb_run.log({
+                        'EM': num_correct / num_eval
+                    })
+
                 print("EM: ", num_correct / num_eval)
                     
-            elif train_config.dataset == "gsm8k_dataset": # gsm8k one by one
+            elif train_config.dataset == "None": # gsm8k one by one
                 # qns + ans가 아닌 qns만 input으로 들어가는 dataset
                 em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
 
@@ -564,12 +568,6 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
 
-    if train_config.dataset == "gsm8k_dataset":
-        eval_labels = eval_dataloader.dataset.dataset.labels
-    elif train_config.dataset == "samsum_dataset":
-        # eval_labels = get_summaries()
-        pass
-
     with MemoryTrace() as memtrace:
         for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
             total_eval_steps += 1
@@ -603,28 +601,6 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
                 tokenizer.batch_decode(preds.detach().cpu().numpy(), skip_special_tokens=True)
             )
 
-    # if train_config.dataset == "gsm8k_dataset":
-    #     file_path = "temp.txt"
-    #     num_eval = len(eval_preds)
-    #     num_correct = 0
-    #     with open(file_path, "w") as file:
-    #         idx = 1
-    #         for p in eval_preds:
-    #             eval_ans = extract_answer(p)
-    #             if eval_ans == eval_labels[idx-1]:
-    #                 num_correct += 1
-
-    #             file.write(str(idx) + ". out: " + p[-100:] + "\n")
-    #             file.write(str(idx) + ". ans: " + eval_labels[idx-1] + "\n")
-    #             file.write(str(idx) + ". eval_ans : " + eval_ans + "\n")
-    #             # file.write(str(idx) + ". p: " + p + "\n")
-    #             idx += 1
-            
-    #         print("EM: ", num_correct / num_eval)
-        
-
-
-
     # If there's more than one CUDA device, reduce evaluation loss across all devices
     if is_xpu_available() and (torch.xpu.device_count() > 1 and train_config.enable_fsdp):
         dist.all_reduce(eval_loss, op=dist.ReduceOp.SUM)
@@ -650,7 +626,7 @@ def evaluation(model,train_config, eval_dataloader, local_rank, tokenizer, wandb
     }
 
     if wandb_run:
-        wandb_run.log(log_dict, commit=False)
+        wandb_run.log(log_dict)
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
 

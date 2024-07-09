@@ -12,7 +12,8 @@ def get_gsm8k_dataset(
         dataset = GSMDataset(
             tokenizer=tokenizer,
             examples=examples,
-            only_qns=True
+            only_qns=True,
+            few_shot=dataset_config.few_shot
         )
         return dataset
     else:
