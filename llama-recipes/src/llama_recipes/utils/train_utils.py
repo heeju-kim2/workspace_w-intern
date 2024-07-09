@@ -353,44 +353,6 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 if wandb_run:
                     wandb_run.log(rouge)
             
-            elif train_config.dataset == "None": # Samsum one by one
-                rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
-
-                rouge_results = []
-                rouge_labels = []
-                rouge_inputs = []
-                step = 0
-
-                for instruct, summary in tqdm(zip(instructions, summaries), desc="calculating Rouge"):
-                    with torch.no_grad():
-                        input_ids = tokenizer(instruct, return_tensors="pt").input_ids.cuda()
-                        outputs = model.generate(input_ids=input_ids, max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
-  
-                        rouge_result = tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)[0]
-                        rouge_input = tokenizer.batch_decode(input_ids.detach().cpu().numpy(), skip_special_tokens=True)[0]
-                        
-                        rouge_results.append(rouge_result[len(instruct): ])
-                        rouge_inputs.append(rouge_input)
-                
-                if len(summaries) != len(rouge_results):
-                    print("In train_utils rouge_results and rouge_labels length mismatched")
-
-                rouge = get_rouge(rouge_results, summaries[:len(rouge_results)])
-                print(rouge)
-                import json
-                rouge_dict = []
-                for r, s, i in zip(rouge_results, summaries[:len(rouge_results)], rouge_inputs):
-                    rouge_dict.append({
-                        'input' : i,
-                        'output' : r,
-                        'label' : s,
-                    })
-                with open(train_config.output_dir + '/rouge_res.json', 'w') as f :
-                    json.dump(rouge_dict, f, indent=4)
-
-                if wandb_run:
-                    wandb_run.log(rouge)
-
             elif train_config.dataset == "gsm8k_dataset": # gsm8k-batch
                 # qns + ans가 아닌 qns만 input으로 들어가는 dataset
                 em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
@@ -463,53 +425,6 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
 
                 print("EM: ", num_correct / num_eval)
                     
-            elif train_config.dataset == "None": # gsm8k one by one
-                # qns + ans가 아닌 qns만 input으로 들어가는 dataset
-                em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
-
-                em_preds = []
-                em_inputs = []
-                em_labels = em_dataset.labels
-
-                with MemoryTrace() as memtrace:
-                    for step, batch in enumerate(tqdm(em_dataset,colour="green", desc="EM Epoch", dynamic_ncols=True)):
-                        key = 'input_ids'
-
-                        with torch.no_grad():
-                            input_ids = torch.tensor([batch['input_ids']]).to('cuda:0')
-                            outputs = model.generate(input_ids=input_ids, temperature=1e-2, max_new_tokens=1000)
-                        
-                        # preds = torch.argmax(outputs.logits, -1)
-                        em_preds.extend(
-                            tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
-                        )
-                        em_inputs.extend(
-                            tokenizer.batch_decode(input_ids.detach().cpu().numpy(), skip_special_tokens=True)
-                        )
-                
-                num_correct = 0
-                num_eval = len(em_preds)
-                idx = 0
-                em_dict = []
-                for p in em_preds:
-                    em_ans = find_number(p)
-                    if em_ans == em_labels[idx]:
-                        num_correct += 1
-                    
-                    em_dict.append({
-                        'input ' : em_inputs[idx],
-                        'output' : p[len(em_inputs[idx]): ],
-                        'answer' : em_labels[idx],
-                        'extracted ans' : em_ans,
-                    })
-
-                    idx += 1
-                
-                import json
-                with open(train_config.output_dir + '/em_res.json', 'w') as f :
-                    json.dump(em_dict, f, indent=4)
-                
-                print("EM: ", num_correct / num_eval)
 
         if train_config.enable_fsdp:
             if rank==0:
