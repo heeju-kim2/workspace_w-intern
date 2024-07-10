@@ -26,6 +26,7 @@ from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
 from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
+from llama_recipes.utils.eval_utils import calculate_rouge
 from llama_recipes.datasets import get_gsm8k_dataset
 from llama_recipes.utils.config_utils import get_dataloader_kwargs
 from llama_recipes.datasets.samsum_dataset import prepare_samsum_data
@@ -286,7 +287,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             val_prep.append(float(eval_ppl))
 
             # calculate rouge score for samsum
-            if train_config.dataset == "samsum_dataset": # Samsum Batch
+            if train_config.dataset == "None": # Samsum Batch
                 rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
                 rouge_labels = []
                 rouge_results = []
@@ -315,7 +316,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 idx = 0
                 for step, batch in enumerate(tqdm(rouge_loader, desc="calculating Rouge")):
                     with torch.no_grad():
-                        outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100, do_sample=True, top_p=0.9, temperature=1e-2)
+                        outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100)
 
                         rouge_result = tokenizer.batch_decode(
                             outputs.detach().cpu().numpy(), skip_special_tokens=True
@@ -353,6 +354,9 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 if wandb_run:
                     wandb_run.log(rouge)
             
+            elif train_config.dataset == "samsum_dataset":
+                calculate_rouge(train_config, model, tokenizer, wandb_run)
+            
             elif train_config.dataset == "gsm8k_dataset": # gsm8k-batch
                 # qns + ans가 아닌 qns만 input으로 들어가는 dataset
                 em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
@@ -385,7 +389,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                             batch[key] = batch[key].to('cuda:0')
                     
                         with torch.no_grad():
-                            outputs = model.generate(input_ids=batch['input_ids'], temperature=1e-2, max_new_tokens=300)
+                            outputs = model.generate(input_ids=batch['input_ids'], max_new_tokens=300)
                         
                         # preds = torch.argmax(outputs.logits, -1)
                         em_preds.extend(
@@ -394,7 +398,6 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                         em_inputs.extend(
                             tokenizer.batch_decode(batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True)
                         )
-                        break
                 
                 num_correct = 0
                 num_eval = len(em_preds)

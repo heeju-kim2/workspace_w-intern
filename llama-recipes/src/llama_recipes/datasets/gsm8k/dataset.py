@@ -88,7 +88,7 @@ def is_correct(model_completion, gt_example):
 
 # Batch Econding
 class GSMDataset(torch.utils.data.Dataset):
-    def __init__(self, tokenizer, examples, loss_on_prefix=False, only_qns=False, few_shot=False):
+    def __init__(self, tokenizer, examples, loss_on_prefix=True, only_qns=False, few_shot=False):
         self.examples = examples
         self.qns = [PREAMBLE + '\n' + (PROMPT if few_shot else "") + '\n' + TEMPLATE.format(question=ex["question"]) for ex in self.examples]
         self.ans = [ex["answer"] + tokenizer.eos_token for ex in self.examples]

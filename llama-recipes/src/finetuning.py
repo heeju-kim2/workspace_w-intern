@@ -64,6 +64,7 @@ def setup_wandb(train_config, fsdp_config, **kwargs):
     run = wandb.init(**init_dict)
     run.config.update(train_config)
     run.config.update(fsdp_config, allow_val_change=True)
+    run.name = f"r{train_config.rank}a{train_config.lora_alpha}"
     return run
 
 
@@ -155,10 +156,12 @@ def main(**kwargs):
         # Load the pre-trained peft model checkpoint and setup its configuration
         if train_config.from_peft_checkpoint:
             model = PeftModel.from_pretrained(model, train_config.from_peft_checkpoint, is_trainable=True)
-            peft_config = model.peft_config()
+            peft_config = model.peft_config
         # Generate the peft config and start fine-tuning from original model
         else:
             peft_config = generate_peft_config(train_config, kwargs)
+            peft_config.r = train_config.rank
+            peft_config.lora_alpha = train_config.lora_alpha
             model = get_peft_model(model, peft_config)
         if wandb_run:
             wandb_run.config.update(peft_config)

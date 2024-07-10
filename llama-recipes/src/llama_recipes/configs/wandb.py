@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class wandb_config:
-    project: str = 'gsm8k' # wandb project name
+    project: str = 'samsum' # wandb project name
     entity: Optional[str] = None # wandb entity name
     job_type: Optional[str] = None
     tags: Optional[List[str]] = None

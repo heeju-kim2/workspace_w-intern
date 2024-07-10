@@ -50,3 +50,5 @@ class train_config:
     profiler_dir: str = "PATH/to/save/profiler/results" # will be used if using profiler
 
     few_shot: bool = False
+    rank: int=8
+    lora_alpha: int=32

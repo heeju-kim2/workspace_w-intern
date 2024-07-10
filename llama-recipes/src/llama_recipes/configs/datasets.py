@@ -29,9 +29,16 @@ class alpaca_dataset:
 @dataclass
 class gsm8k_dataset:
     dataset: str = "gsm8k_dataset"
-    train_split: str = "tain"
+    train_split: str = "train"
     test_split: str = "test"
     data_path: str = "src/llama_recipes/datasets/gsm8k/data"
+
+
+@dataclass
+class hellaswag_dataset:
+    dataset: str = "hella_dataset"
+    train_split: str = "train"
+    test_split: str = "validation"
 
 
 @dataclass
