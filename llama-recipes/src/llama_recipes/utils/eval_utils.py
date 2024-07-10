@@ -17,7 +17,7 @@ def get_rouge(eval_preds, test_labels):
 
     return scores
 
-def calculate_rouge(train_config, model, tokenizer, wandb_run):
+def rouge_for_samsum(train_config, model, tokenizer, wandb_run):
     rouge_dataset, instructions, summaries = prepare_samsum_data(tokenizer)
     rouge_labels = []
     rouge_results = []
@@ -63,7 +63,6 @@ def calculate_rouge(train_config, model, tokenizer, wandb_run):
                 idx += 1
             
             rouge_inputs.extend(rouge_input)
-            break
     
     if len(rouge_labels) != len(rouge_results):
         print("In train_utils rouge_results and rouge_labels length mismatched")
@@ -84,3 +83,71 @@ def calculate_rouge(train_config, model, tokenizer, wandb_run):
 
     if wandb_run:
         wandb_run.log(rouge)
+
+
+def em_for_gsm8k(train_config, model, tokenizer, wandb_run):
+    em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
+    em_config = copy.deepcopy(train_config)
+
+    lengths = [len(d['input_ids']) for d in em_dataset]
+    ids = np.argsort(lengths, kind='mergesort')
+
+    em_config.batching_strategy = "padding"
+    em_config.val_batch_size = 15
+
+    em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
+    em_dataloader = torch.utils.data.DataLoader(
+        em_dataset,
+        num_workers=train_config.num_workers_dataloader,
+        pin_memory=True,
+        **em_dl_kwargs,
+    )
+
+    em_preds = []
+    em_inputs = []
+    em_labels = em_dataloader.dataset.labels
+
+    for step, batch in enumerate(tqdm(em_dataloader,colour="green", desc="EM Epoch", dynamic_ncols=True)):
+        key = 'input_ids'
+        batch[key] = batch[key].to('cuda:0')
+
+        with torch.no_grad():
+            outputs = model.generate(input_ids=batch['input_ids'], max_new_tokens=300)
+        
+        # preds = torch.argmax(outputs.logits, -1)
+        em_preds.extend(
+            tokenizer.batch_decode(outputs.detach().cpu().numpy(), skip_special_tokens=True)
+        )
+        em_inputs.extend(
+            tokenizer.batch_decode(batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True)
+        )
+        break
+    
+    num_correct = 0
+    num_eval = len(em_preds)
+    idx = 0
+    em_dict = []
+    for p in em_preds:
+        em_ans = find_number(p)
+        if em_ans == em_labels[ids[idx]]:
+            num_correct += 1
+        
+        em_dict.append({
+            'input ' : em_inputs[idx],
+            'output' : p[len(em_inputs[idx]): ],
+            'answer' : em_labels[ids[idx]],
+            'extracted ans' : em_ans,
+        })
+
+        idx += 1
+    
+    import json
+    with open(train_config.output_dir + f'/em_res.json', 'w') as f :
+        json.dump(em_dict, f, indent=4)
+    
+    if wandb_run:
+        wandb_run.log({
+            'EM': num_correct / num_eval
+        })
+
+    print("EM: ", num_correct / num_eval)
