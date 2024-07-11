@@ -64,7 +64,7 @@ def setup_wandb(train_config, fsdp_config, **kwargs):
     run = wandb.init(**init_dict)
     run.config.update(train_config)
     run.config.update(fsdp_config, allow_val_change=True)
-    run.name = f"r{train_config.rank}a{train_config.lora_alpha}"
+    run.name = f"{train_config.output_dir}"
     return run
 
 
@@ -218,6 +218,10 @@ def main(**kwargs):
         split="train",
     )
 
+    print(dataset_train)
+    print(dataset_train[0])
+    exit(55)
+
     if not train_config.enable_fsdp or rank == 0:
         print(f"--> Training Set Length = {len(dataset_train)}")
 
@@ -292,6 +296,7 @@ def main(**kwargs):
         local_rank if train_config.enable_fsdp else None,
         rank if train_config.enable_fsdp else None,
         wandb_run,
+        dataset_config,
     )
     if not train_config.enable_fsdp or rank==0:
         [print(f'Key: {k}, Value: {v}') for k, v in results.items()]

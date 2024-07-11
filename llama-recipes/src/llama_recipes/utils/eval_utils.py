@@ -85,15 +85,15 @@ def rouge_for_samsum(train_config, model, tokenizer, wandb_run):
         wandb_run.log(rouge)
 
 
-def em_for_gsm8k(train_config, model, tokenizer, wandb_run):
-    em_dataset = get_gsm8k_dataset(train_config, tokenizer, split="EM")
+def em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full=False):
+    em_dataset = get_gsm8k_dataset(dataset_config, tokenizer, split="EM")
     em_config = copy.deepcopy(train_config)
 
     lengths = [len(d['input_ids']) for d in em_dataset]
     ids = np.argsort(lengths, kind='mergesort')
 
     em_config.batching_strategy = "padding"
-    em_config.val_batch_size = 15
+    em_config.val_batch_size = 15 if dataset_config.few_shot is "" else 5
 
     em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
     em_dataloader = torch.utils.data.DataLoader(
@@ -121,7 +121,8 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run):
         em_inputs.extend(
             tokenizer.batch_decode(batch['input_ids'].detach().cpu().numpy(), skip_special_tokens=True)
         )
-        break
+        if not full:
+            break
     
     num_correct = 0
     num_eval = len(em_preds)
@@ -142,12 +143,18 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run):
         idx += 1
     
     import json
-    with open(train_config.output_dir + f'/em_res.json', 'w') as f :
+    import time
+    t = time.time()
+    with open(train_config.output_dir + f'/em_res{t}.json', 'w') as f :
         json.dump(em_dict, f, indent=4)
     
     if wandb_run:
         wandb_run.log({
-            'EM': num_correct / num_eval
+            'EM_split' if not full else "EM" : num_correct / num_eval
         })
 
     print("EM: ", num_correct / num_eval)
+
+
+def acc_for_hella(train_config, model, tokenizer, wandb_run):
+    pass

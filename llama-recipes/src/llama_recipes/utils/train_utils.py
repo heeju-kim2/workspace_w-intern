@@ -27,10 +27,6 @@ from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
 from llama_recipes.utils.eval_utils import rouge_for_samsum, em_for_gsm8k
-from llama_recipes.datasets import get_gsm8k_dataset
-from llama_recipes.utils.config_utils import get_dataloader_kwargs
-from llama_recipes.datasets.gsm8k.dataset import find_number
-from llama_recipes.data.concatenator import ConcatDataset
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
     tokenizer.pad_token_id = 0
@@ -74,7 +70,7 @@ def profile(cfg, local_rank=None):
         yield None
 
 
-def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_run=None):
+def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps, train_config, fsdp_config=None, local_rank=None, rank=None, wandb_run=None, dataset_config=None):
     """
     Trains the model on the given dataloader
 
@@ -289,7 +285,7 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
             if train_config.dataset == "samsum_dataset":
                 rouge_for_samsum(train_config, model, tokenizer, wandb_run)
             elif train_config.dataset == "gsm8k_dataset":
-                em_for_gsm8k(train_config, model, tokenizer, wandb_run)
+                em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full=False)
 
         if train_config.enable_fsdp:
             if rank==0:
@@ -300,6 +296,9 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
         # Saving the results every epoch to plot later
         if train_config.save_metrics:
             save_to_json(metrics_filename, train_step_loss, train_loss, train_step_perplexity, train_prep, val_step_loss, val_loss, val_step_perplexity, val_prep)
+
+    if train_config.dataset == "gsm8k_dataset":
+        em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full=True)
 
     avg_epoch_time = sum(epoch_times)/ len(epoch_times)
     avg_checkpoint_time = sum(checkpoint_times)/ len(checkpoint_times) if len(checkpoint_times) > 0 else 0
@@ -571,12 +570,3 @@ def save_to_json(output_filename, train_step_loss, train_epoch_loss, train_step_
     }
     with open(output_filename, "w") as f:
         json.dump(metrics_data, f)
-
-def get_rouge(eval_preds, test_labels):
-    """
-    Calculate the rouge score
-    """
-    rouge = evaluate.load('rouge')
-    scores = rouge.compute(predictions=eval_preds, references=test_labels)
-
-    return scores

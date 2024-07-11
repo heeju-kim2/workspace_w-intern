@@ -45,7 +45,7 @@ def get_examples(split):
 
     for ex in examples:
         ex.update(question=ex["question"] + "\n")
-        ex.update(answer=ex["answer"].replace("####", "The answer is "))
+        ex.update(answer=ex["answer"].replace("####", "The answer is"))
 
     print(f"{len(examples)} {split} examples")
     return examples
