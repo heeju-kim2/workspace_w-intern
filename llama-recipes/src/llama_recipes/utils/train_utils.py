@@ -26,7 +26,7 @@ from llama_recipes.policies import fpSixteen,bfSixteen, get_llama_wrapper
 from llama_recipes.utils.memory_utils import MemoryTrace
 from accelerate.utils import is_xpu_available, is_ccl_available
 from llama_recipes.utils.flop_utils import FlopMeasure
-from llama_recipes.utils.eval_utils import rouge_for_samsum, em_for_gsm8k
+from llama_recipes.utils.eval_utils import rouge_for_samsum, em_for_gsm8k, acc_for_hella
 
 def set_tokenizer_params(tokenizer: LlamaTokenizer):
     tokenizer.pad_token_id = 0
@@ -286,6 +286,8 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
                 rouge_for_samsum(train_config, model, tokenizer, wandb_run)
             elif train_config.dataset == "gsm8k_dataset":
                 em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full=False)
+            elif train_config.dataset == "hella_dataset":
+                acc_for_hella(train_config, model, tokenizer, wandb_run)
 
         if train_config.enable_fsdp:
             if rank==0:

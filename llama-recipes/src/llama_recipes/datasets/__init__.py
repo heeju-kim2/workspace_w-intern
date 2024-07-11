@@ -5,4 +5,4 @@ from llama_recipes.datasets.grammar_dataset.grammar_dataset import get_dataset a
 from llama_recipes.datasets.alpaca_dataset import InstructionDataset as get_alpaca_dataset
 from llama_recipes.datasets.samsum_dataset import get_preprocessed_samsum as get_samsum_dataset
 from llama_recipes.datasets.gsm8k_dataset import get_gsm8k_dataset
-from llama_recipes.datasets.hellaswag_dataset import get_preprocessed_hella as get_hella_dataset
+from llama_recipes.datasets.hellaswag_dataset import get_hella_dataset

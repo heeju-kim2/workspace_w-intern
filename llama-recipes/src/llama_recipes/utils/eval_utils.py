@@ -3,10 +3,13 @@ import torch
 from tqdm import tqdm
 import evaluate
 import numpy as np
+from torch.nn import CrossEntropyLoss
 from llama_recipes.datasets import get_gsm8k_dataset
 from llama_recipes.utils.config_utils import get_dataloader_kwargs
 from llama_recipes.datasets.samsum_dataset import prepare_samsum_data
 from llama_recipes.datasets.gsm8k.dataset import find_number
+from llama_recipes.datasets.hellaswag_dataset import HellaDataset
+from transformers.data import DataCollatorForSeq2Seq
 
 def get_rouge(eval_preds, test_labels):
     """
@@ -93,7 +96,7 @@ def em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full
     ids = np.argsort(lengths, kind='mergesort')
 
     em_config.batching_strategy = "padding"
-    em_config.val_batch_size = 15 if dataset_config.few_shot is "" else 5
+    em_config.val_batch_size = 15 if dataset_config.few_shot == "none" else 5
 
     em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
     em_dataloader = torch.utils.data.DataLoader(
@@ -157,4 +160,69 @@ def em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full
 
 
 def acc_for_hella(train_config, model, tokenizer, wandb_run):
-    pass
+    acc_dataset = HellaDataset(tokenizer)
+    acc_batch_size = 16 ## 꼭 4의 배수로 설정해주세요
+    acc_loader = torch.utils.data.DataLoader(acc_dataset, pin_memory=True, batch_size=acc_batch_size, collate_fn=DataCollatorForSeq2Seq(tokenizer))
+    num_correct = 0
+    num_eval = 0
+
+    pbar = tqdm(colour="blue", desc=f"Evaluating Acc", total=len(acc_loader), dynamic_ncols=True)
+    for step, batch in enumerate(acc_loader):
+        batch = batch.to('cuda:0')
+        with torch.no_grad():
+            outputs = model(input_ids=batch['input_ids'].to('cuda:0'), attention_mask=batch['attention_mask'].to('cuda:0'), labels=batch['labels'].to('cuda:0'))
+            logits = outputs.logits
+
+            batch = batch.to('cpu')
+            logits = logits.to('cpu')
+
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = batch['labels'][..., 1:].contiguous()
+            # Flatten the tokens
+            loss_fct = CrossEntropyLoss(reduction='none')
+            shift_logits = shift_logits.view(-1, shift_logits.size(-1))
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
+
+            shift_losses = loss.view(batch['input_ids'].size(0), -1)
+            # now get the average loss just for the completion region (where mask == 1), in each row
+            shift_mask = (batch['attention_mask'][..., 1:]).contiguous() # we must shift mask, so we start at the last prompt token
+            masked_shift_losses = shift_losses * shift_mask
+            # sum and divide by the number of 1s in the mask
+            sum_loss = masked_shift_losses.sum(dim=1)
+
+            n = sum_loss.size(0) // 4
+            sum_loss_reshaped = sum_loss.view(n, 4).squeeze()
+
+            # now we have a loss for each of the 4 completions
+            # the one with the lowest loss should be the most likely
+
+            pred = sum_loss_reshaped.argmin(dim=1)
+            # _, pred = torch.topk(sum_loss_reshaped, n, largest=False)
+            # pred = sum_loss.argmin().item()
+
+            orgn_labels = batch['orgn_label'].view(n, 4).squeeze()
+            orgn_labels = orgn_labels[:, 0]
+
+            pred = pred.tolist()
+            orgn_labels = orgn_labels.flatten().tolist()
+
+            for p, l in zip(pred, orgn_labels):
+                num_eval += 1
+                if p == l:
+                    num_correct += 1
+            
+        pbar.set_description(f"Evaluating Acc: step {step}/{len(acc_loader)} completed (acc: {num_correct / num_eval * 100:.4f})")
+
+    pbar.close()
+    
+    print("acc :", num_correct / num_eval * 100)
+
+    if wandb_run:
+        wandb_run.log({
+            'acc' : num_correct / num_eval * 100
+        })
+        

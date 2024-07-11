@@ -31,12 +31,12 @@ class gsm8k_dataset:
     dataset: str = "gsm8k_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    few_shot: str = "" # EM,test,train few_shot in split으로 few_shot 추가 여부 결정
+    few_shot: str = "none" # EM,test,train few_shot in split으로 few_shot 추가 여부 결정
     data_path: str = "src/llama_recipes/datasets/gsm8k/data"
 
 
 @dataclass
-class hellaswag_dataset:
+class hella_dataset:
     dataset: str = "hella_dataset"
     train_split: str = "train"
     test_split: str = "validation"
