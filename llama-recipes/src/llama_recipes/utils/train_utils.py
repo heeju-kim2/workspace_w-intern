@@ -119,6 +119,19 @@ def train(model, train_dataloader,eval_dataloader, tokenizer, optimizer, lr_sche
     best_val_loss = float("inf")
     total_train_steps = 0
     max_steps_reached = False  # Flag to indicate max training steps reached
+
+    if train_config.eval_only:
+        if train_config.dataset == "samsum_dataset":
+            rouge_for_samsum(train_config, model, tokenizer, wandb_run)
+        elif train_config.dataset == "gsm8k_dataset":
+            em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full=True)
+        elif train_config.dataset == "hella_dataset":
+            acc_for_hella(train_config, model, tokenizer, wandb_run)
+        
+        eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = evaluation(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run)
+
+        return None
+
     # Start the training loop
     for epoch in range(train_config.num_epochs):
         # stop when the maximum number of training steps is reached

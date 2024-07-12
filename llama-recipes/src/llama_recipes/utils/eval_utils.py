@@ -166,9 +166,9 @@ def acc_for_hella(train_config, model, tokenizer, wandb_run):
     num_correct = 0
     num_eval = 0
 
-    # pbar = tqdm(colour="blue", desc=f"Evaluating Acc", total=len(acc_loader), dynamic_ncols=True)
-    # for step, batch in enumerate(acc_loader):
-    for step, batch in enumerate(tqdm(acc_loader, desc="calculating acc", dynamic_ncols=True)):
+    pbar = tqdm(colour="blue", desc=f"Evaluating Acc", total=len(acc_loader), dynamic_ncols=True)
+    for step, batch in enumerate(acc_loader):
+    # for step, batch in enumerate(tqdm(acc_loader, desc="calculating acc", dynamic_ncols=True)):
         batch = batch.to('cuda:0')
         with torch.no_grad():
             outputs = model(input_ids=batch['input_ids'].to('cuda:0'), attention_mask=batch['attention_mask'].to('cuda:0'), labels=batch['labels'].to('cuda:0'))
@@ -214,9 +214,10 @@ def acc_for_hella(train_config, model, tokenizer, wandb_run):
                 if p == l:
                     num_correct += 1
         
-        # pbar.set_description(f"Evaluating Acc: step {step}/{len(acc_loader)} completed (acc: {num_correct / num_eval * 100:.4f})")
+        pbar.update(1)
+        pbar.set_description(f"Evaluating Acc: step {step}/{len(acc_loader)} completed (acc: {num_correct / num_eval * 100:.4f})")
 
-    # pbar.close()
+    pbar.close()
     
     print("acc :", num_correct / num_eval * 100)
 

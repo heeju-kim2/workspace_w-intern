@@ -51,3 +51,4 @@ class train_config:
 
     rank: int=8
     lora_alpha: int=32
+    eval_only: bool = False # Eval only with no training

@@ -52,9 +52,8 @@ class HellaDataset(torch.utils.data.Dataset):
 
                 sample = {
                     "input_ids": tokens,
-                    "attention_mask" : [0] * len(ctx_tokens) + [1] * len(end_tokens),
-                    "labels": copy.deepcopy(tokens),
-                    # "onehot" : 1 if (idx == label) else 0,
+                    "attention_mask" : [1] * len(tokens),
+                    "labels": [-100] * len(ctx_tokens) + end_tokens,
                     "orgn_label" : label,
                 }
 
