@@ -161,7 +161,7 @@ def em_for_gsm8k(train_config, dataset_config, model, tokenizer, wandb_run, full
 
 def acc_for_hella(train_config, model, tokenizer, wandb_run):
     acc_dataset = HellaDataset(tokenizer)
-    acc_batch_size = 16 ## 꼭 4의 배수로 설정해주세요
+    acc_batch_size = 64 ## 꼭 4의 배수로 설정해주세요
     acc_loader = torch.utils.data.DataLoader(acc_dataset, pin_memory=True, batch_size=acc_batch_size, collate_fn=DataCollatorForSeq2Seq(tokenizer))
     num_correct = 0
     num_eval = 0
@@ -197,11 +197,14 @@ def acc_for_hella(train_config, model, tokenizer, wandb_run):
 
             n = sum_loss.size(0) // 4
             sum_loss_reshaped = sum_loss.view(n, 4).squeeze()
+            end_length = batch['end_len'].view(n, 4).squeeze()
+
+            normalized_sum = sum_loss_reshaped / end_length
 
             # now we have a loss for each of the 4 completions
             # the one with the lowest loss should be the most likely
 
-            pred = sum_loss_reshaped.argmin(dim=1)
+            pred = normalized_sum.argmin(dim=1)
 
             orgn_labels = batch['orgn_label'].view(n, 4).squeeze()
             orgn_labels = orgn_labels[:, 0]

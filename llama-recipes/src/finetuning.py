@@ -61,6 +61,7 @@ def setup_wandb(train_config, fsdp_config, **kwargs):
     wandb_config = WANDB_CONFIG()
     update_config(wandb_config, **kwargs)
     init_dict = dataclasses.asdict(wandb_config)
+    init_dict['project'] = train_config.dataset.split("_")[0]
     run = wandb.init(**init_dict)
     run.config.update(train_config)
     run.config.update(fsdp_config, allow_val_change=True)

@@ -90,7 +90,7 @@ def is_correct(model_completion, gt_example):
 class GSMDataset(torch.utils.data.Dataset):
     def __init__(self, tokenizer, examples, loss_on_prefix=True, only_qns=False, few_shot=False):
         self.examples = examples
-        self.qns = [PREAMBLE + '\n' + (PROMPT if few_shot else "") + '\n' + TEMPLATE.format(question=ex["question"]) for ex in self.examples]
+        self.qns = [tokenizer.bos_token + " " + PREAMBLE + '\n' + (PROMPT if few_shot else "") + '\n' + TEMPLATE.format(question=ex["question"]) for ex in self.examples]
         self.ans = [ex["answer"] + tokenizer.eos_token for ex in self.examples]
         self.qns = tokenizer(self.qns, padding=False)
         self.ans = tokenizer(self.ans, padding=False)
@@ -111,7 +111,7 @@ class GSMDataset(torch.utils.data.Dataset):
                 + ([1] * len(ans_tokens))
             )
 
-            tokens = qn_tokens + ans_tokens
+            tokens = [-100] * len(qn_tokens) + ans_tokens
         else:
             mask = (
                 [int(self.loss_on_prefix)] * len(qn_tokens)
