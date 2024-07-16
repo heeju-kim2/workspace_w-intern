@@ -110,13 +110,14 @@ class GSMDataset(torch.utils.data.Dataset):
                 ([int(self.loss_on_prefix)] * len(qn_tokens))
                 + ([1] * len(ans_tokens))
             )
-
-            tokens = [-100] * len(qn_tokens) + ans_tokens
+            input_ids = qn_tokens + ans_tokens
+            labels = [-100] * len(qn_tokens) + ans_tokens
         else:
             mask = (
                 [int(self.loss_on_prefix)] * len(qn_tokens)
             )
 
-            tokens = qn_tokens
+            input_ids = qn_tokens
+            labels = qn_tokens
 
-        return dict(input_ids=tokens, attention_mask=mask, labels=copy.deepcopy(tokens))
+        return dict(input_ids=input_ids, attention_mask=mask, labels=labels)
