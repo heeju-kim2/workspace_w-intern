@@ -25,3 +25,18 @@ class llama_adapter_config:
 class prefix_config:
      num_virtual_tokens: int=30
      task_type: str= "CAUSAL_LM"
+
+@dataclass
+class prompt_config:
+     task_type: str = "CAUSAL_LM"
+     num_virtual_tokens: int=32
+     prompt_tuning_init_text: str = "Please summarize the following conversation."
+     #tokenizer_name_or_path: str = "meta-llama/Llama-2-7b-chat-hf"
+
+@dataclass
+class adalora_config:
+     task_type: str = "CAUSAL_LM"
+     r: int = 8
+     lora_alpha: int=32
+     target_modules: List[int] = field(default_factory=lambda: ['q_proj', 'v_proj'])
+     lora_dropout: float=0.01
