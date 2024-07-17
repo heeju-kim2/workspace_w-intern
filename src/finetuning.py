@@ -64,7 +64,9 @@ def setup_wandb(train_config):
     update_config(wandb_config, **dataclasses.asdict(train_config))
     
     init_dict = dataclasses.asdict(wandb_config)
+    init_dict['project'] = train_config.dataset.split("_")[0]
     run = wandb.init(**init_dict)
+    run.config.update(train_config)
 
     # show configurations
     mode = "mixed" if train_config.mixed_precision else "normal"
@@ -133,6 +135,11 @@ def main(args):
     update_config(train_config, **vars(args))
 
     set_seed(train_config.seed)
+
+    dset = train_config.dataset.split("_")[0]
+    train_config.output_dir = f"{dset}_outputs/Llama-2-7b-chat-hf/{train_config.dtype}/{train_config.peft_method}"
+    if not os.path.exists(train_config.output_dir):
+        os.makedirs(train_config.output_dir)
     
     #if not train_config.enable_fsdp:
 
