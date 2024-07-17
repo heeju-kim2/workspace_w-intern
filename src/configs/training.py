@@ -11,13 +11,13 @@ class train_config:
     dtype: str="bfloat16" #alternative: fp32, fp16, bf16, fp8 w/mp, fp32, bf16 w/o mp
     
     # log and save
-    output_dir: str = "PATH/to/save/PEFT/model"
-    use_wandb: bool = False # Enable wandb for experient tracking
+    output_dir: str = "prompt_tuning"
+    use_wandb: bool = True # Enable wandb for experient tracking
     save_metrics: bool = False # saves training metrics to a json file for later plotting
 
     # eval 
     run_eval: bool=True
-    eval_batch_size: int=1
+    eval_batch_size: int=15
     max_eval_step: int=0
 
     #dataloader
@@ -25,7 +25,7 @@ class train_config:
     num_workers_dataloader: int=2
 
     #train
-    batch_size_training: int=1
+    batch_size_training: int=15
     batching_strategy: str="padding" #alternative : packing, padding
     context_length: int=4096 # model context length 
     gradient_accumulation_steps: int=4

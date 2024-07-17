@@ -64,7 +64,9 @@ def setup_wandb(train_config):
     update_config(wandb_config, **dataclasses.asdict(train_config))
     
     init_dict = dataclasses.asdict(wandb_config)
+    init_dict['project'] = train_config.dataset.split("_")[0]
     run = wandb.init(**init_dict)
+    run.config.update(train_config)
 
     # show configurations
     mode = "mixed" if train_config.mixed_precision else "normal"
@@ -133,6 +135,11 @@ def main(args):
     update_config(train_config, **vars(args))
 
     set_seed(train_config.seed)
+
+    dset = train_config.dataset.split("_")[0]
+    train_config.output_dir = f"{dset}_outputs/Llama-2-7b-chat-hf/{train_config.dtype}/{train_config.peft_method}"
+    if not os.path.exists(train_config.output_dir):
+        os.makedirs(train_config.output_dir)
     
     #if not train_config.enable_fsdp:
 
@@ -158,8 +165,13 @@ def main(args):
             trust_remote_code=True,
         )
     
-    tokenizer = AutoTokenizer.from_pretrained(train_config.model_name)
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer = AutoTokenizer.from_pretrained(train_config.model_name, padding_side='left')
+    # tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
+    if len(tokenizer) > model.get_input_embeddings().weight.shape[0]:
+        print("WARNING: Resizing the embedding matrix to match the tokenizer vocab size.")
+        model.resize_token_embeddings(len(tokenizer))
     
     print_model_size(model, train_config)
 

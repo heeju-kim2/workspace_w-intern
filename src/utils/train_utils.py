@@ -13,6 +13,8 @@ from torch.nn.utils import clip_grad_norm_
 from accelerate.utils import is_xpu_available
 import evaluate
 import numpy as np
+from utils.eval_utils import rouge_for_samsum
+from peft import get_peft_model_state_dict
 # from utils.memory_utils import MemoryTrace
 # from utils.flop_utils import FlopMeasure
 
@@ -59,8 +61,8 @@ def evaluation(model,
     model.eval()
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
-
-    metric = evaluate.load("rouge") ##TODO(HJ) need to change
+    eval_metric = 0
+    # metric = evaluate.load("rouge") ##TODO(HJ) need to change
 
     for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
         total_eval_steps += 1
@@ -85,23 +87,24 @@ def evaluation(model,
 
         # references = accelerator.pad_across_processes(
         #         batch['labels'], dim=1, pad_index=tokenizer.pad_token_id).detach().cpu().numpy()
- 
-        references= torch.where(batch['labels'] != -100, batch['labels'], tokenizer.pad_token_id)
-        predictions= torch.where(batch['labels'] != -100, predictions, tokenizer.pad_token_id)
+        # print(batch['labels'].shape)
+        # print(batch['input_ids'].shape)
+        # print(predictions.shape)
+        # references= torch.where(batch['labels'] != -100, batch['labels'], tokenizer.pad_token_id)
+        # predictions= torch.where(batch['labels'] != -100, predictions, tokenizer.pad_token_id)
 
-        predictions = tokenizer.batch_decode(predictions.detach().cpu().numpy(), skip_special_tokens=True)
-        references = tokenizer.batch_decode(references.detach().cpu().numpy(), skip_special_tokens=True)
+        # predictions = tokenizer.batch_decode(predictions.detach().cpu().numpy(), skip_special_tokens=True)
+        # references = tokenizer.batch_decode(references.detach().cpu().numpy(), skip_special_tokens=True)
         
-        if step < 3:
-            print("predictions", predictions)
-            print("references", references)
+        # if step < 3:
+        #     print("predictions", predictions)
+        #     print("references", references)
         
-        predictions, references = accelerator.gather_for_metrics((predictions, references))
-        metric.add_batch(
-            predictions=predictions,
-            references=references,
-        )
-    eval_metric = metric.compute()
+        # predictions, references = accelerator.gather_for_metrics((predictions, references))
+    
+    if train_config.dataset == "samsum_dataset":
+        eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator, logger)
+    
     # Use accelerator.print to print only on the main process.
     accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
 
@@ -218,6 +221,12 @@ def train(model,
                 accelerator.print(f"best eval loss on epoch {epoch+1} is {best_val_loss}")
             val_loss.append(float(best_val_loss))
             val_prep.append(float(eval_ppl))
+
+                        ## save peft layers
+            accelerator.wait_for_everyone()
+            peft_state_dict = get_peft_model_state_dict(model)
+            output_dir = os.path.join(train_config.output_dir, f"epoch_{0}")
+            model.save_pretrained(output_dir)
         accelerator.print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
 
 

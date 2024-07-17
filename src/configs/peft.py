@@ -4,8 +4,8 @@ from typing import List
 
 @dataclass
 class lora_config:
-     r: int=8
-     lora_alpha: int=32
+     r: int=64
+     lora_alpha: int=64
      target_modules: List[str] = field(default_factory=lambda: ["q_proj", "v_proj"])
      bias= "none"
      task_type: str= "CAUSAL_LM"
