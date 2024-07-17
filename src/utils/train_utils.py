@@ -13,6 +13,7 @@ from torch.nn.utils import clip_grad_norm_
 from accelerate.utils import is_xpu_available
 import evaluate
 import numpy as np
+from utils.eval_utils import rouge_for_samsum
 # from utils.memory_utils import MemoryTrace
 # from utils.flop_utils import FlopMeasure
 
@@ -59,8 +60,8 @@ def evaluation(model,
     model.eval()
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
-
-    metric = evaluate.load("rouge") ##TODO(HJ) need to change
+    eval_metric = 0
+    # metric = evaluate.load("rouge") ##TODO(HJ) need to change
 
     for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
         total_eval_steps += 1
@@ -97,11 +98,10 @@ def evaluation(model,
             print("references", references)
         
         predictions, references = accelerator.gather_for_metrics((predictions, references))
-        metric.add_batch(
-            predictions=predictions,
-            references=references,
-        )
-    eval_metric = metric.compute()
+    
+    if train_config.dataset == "samsum_dataset":
+        eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator, logger)
+    
     # Use accelerator.print to print only on the main process.
     accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
 

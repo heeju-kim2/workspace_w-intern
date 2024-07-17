@@ -158,8 +158,13 @@ def main(args):
             trust_remote_code=True,
         )
     
-    tokenizer = AutoTokenizer.from_pretrained(train_config.model_name)
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer = AutoTokenizer.from_pretrained(train_config.model_name, padding_side='left')
+    # tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
+    if len(tokenizer) > model.get_input_embeddings().weight.shape[0]:
+        print("WARNING: Resizing the embedding matrix to match the tokenizer vocab size.")
+        model.resize_token_embeddings(len(tokenizer))
     
     print_model_size(model, train_config)
 

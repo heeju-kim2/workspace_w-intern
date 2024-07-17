@@ -3,7 +3,7 @@
 # export RANK=0
 export WORLD_SIZE=1
 
-model_name="meta-llama/Llama-2-7b-chat-hf"
+model_name="../../models/Llama-2-7b-chat-hf"
 peft_method="lora"
 
 # # pure bf16
@@ -25,10 +25,10 @@ peft_method="lora"
 # # pure fp32
 dtype="float32"
 #single-chip
-CUDA_VISIBLE_DEVICES=0 python src/finetuning.py \
+CUDA_VISIBLE_DEVICES=0 python ../src/finetuning.py \
                         --model_name $model_name \
                         --dtype $dtype \
-                        --peft_method $peft_method
+                        --peft_method $peft_method \
 
 
 # multi-chip (In debugging)
