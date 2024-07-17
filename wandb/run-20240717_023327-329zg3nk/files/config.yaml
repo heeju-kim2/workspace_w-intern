@@ -1,0 +1,122 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.14
+    cli_version: 0.17.0
+    framework: huggingface
+    huggingface_version: 4.42.4
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1721183607
+    t:
+      1:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      - 71
+      - 98
+      - 100
+      - 105
+      2:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      - 71
+      - 98
+      - 100
+      - 105
+      3:
+      - 17
+      - 18
+      - 23
+      - 37
+      4: 3.10.14
+      5: 0.17.0
+      6: 4.42.4
+      8:
+      - 5
+      13: linux-x86_64
+peft_type:
+  desc: null
+  value: PeftType.LORA
+auto_mapping:
+  desc: null
+  value: null
+base_model_name_or_path:
+  desc: null
+  value: meta-llama/Llama-2-7b-hf
+revision:
+  desc: null
+  value: null
+task_type:
+  desc: null
+  value: CAUSAL_LM
+inference_mode:
+  desc: null
+  value: false
+r:
+  desc: null
+  value: 8
+target_modules:
+  desc: null
+  value:
+  - v_proj
+  - q_proj
+lora_alpha:
+  desc: null
+  value: 32
+lora_dropout:
+  desc: null
+  value: 0.05
+fan_in_fan_out:
+  desc: null
+  value: false
+bias:
+  desc: null
+  value: none
+use_rslora:
+  desc: null
+  value: false
+modules_to_save:
+  desc: null
+  value: null
+init_lora_weights:
+  desc: null
+  value: true
+layers_to_transform:
+  desc: null
+  value: null
+layers_pattern:
+  desc: null
+  value: null
+rank_pattern:
+  desc: null
+  value: {}
+alpha_pattern:
+  desc: null
+  value: {}
+megatron_config:
+  desc: null
+  value: null
+megatron_core:
+  desc: null
+  value: megatron.core
+loftq_config:
+  desc: null
+  value: {}
+use_dora:
+  desc: null
+  value: false
+layer_replication:
+  desc: null
+  value: null

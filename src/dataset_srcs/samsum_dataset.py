@@ -31,5 +31,4 @@ def get_preprocessed_samsum(dataset_config, tokenizer, split, num_examples=None)
         return sample
 
     dataset = dataset.map(tokenize_add_label, remove_columns=list(dataset.features))
-
     return dataset

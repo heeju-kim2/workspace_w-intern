@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class wandb_config:
-    project: str = 'llama_recipes' # wandb project name
+    project: str = "low_precision_training" # wandb project name
     entity: Optional[str] = None # wandb entity name
     job_type: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -15,3 +15,4 @@ class wandb_config:
 see 
 https://docs.wandb.ai/ref/python/init
 """
+

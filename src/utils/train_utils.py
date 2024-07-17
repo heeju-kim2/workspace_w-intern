@@ -46,7 +46,6 @@ def print_model_size(model, config, rank: int = 0) -> None:
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"\n--> {config.model_name} has {total_params / 1e6} Million params\n")
 
-
 def evaluation(model, 
               eval_dataloader, 
               tokenizer, 
@@ -70,27 +69,41 @@ def evaluation(model,
             break
         
         # We could avoid this line since we set the accelerator with `device_placement=True`.
-        batch.to(accelerator.device)
+        batch = {k :v.to(accelerator.device) for k, v in batch.items()}
         with torch.no_grad():
             outputs = model(**batch)
             loss = outputs.loss
             eval_loss += loss.detach().float()
-
         predictions = outputs.logits.argmax(dim=-1)
+        
+        # gather all inferences across chips
+        accelerator.wait_for_everyone()
+
+        ##(TODO)HJ multigpu gather inference 
+        # predictions = accelerator.pad_across_processes(
+        #         predictions, dim=1, pad_index=tokenizer.pad_token_id)
+
+        # references = accelerator.pad_across_processes(
+        #         batch['labels'], dim=1, pad_index=tokenizer.pad_token_id).detach().cpu().numpy()
+ 
+        references= torch.where(batch['labels'] != -100, batch['labels'], tokenizer.pad_token_id)
+        predictions= torch.where(batch['labels'] != -100, predictions, tokenizer.pad_token_id)
 
         predictions = tokenizer.batch_decode(predictions.detach().cpu().numpy(), skip_special_tokens=True)
-        references = batch['labels'].detach().cpu().numpy()
-        references= np.where(references != -100, references, tokenizer.pad_token_id)
-        references = tokenizer.batch_decode(references, skip_special_tokens=True) 
-
+        references = tokenizer.batch_decode(references.detach().cpu().numpy(), skip_special_tokens=True)
+        
+        if step < 3:
+            print("predictions", predictions)
+            print("references", references)
+        
         predictions, references = accelerator.gather_for_metrics((predictions, references))
         metric.add_batch(
             predictions=predictions,
             references=references,
         )
-        eval_metric = metric.compute()
-        # Use accelerator.print to print only on the main process.
-        accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
+    eval_metric = metric.compute()
+    # Use accelerator.print to print only on the main process.
+    accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
 
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     eval_ppl = torch.exp(eval_epoch_loss)
@@ -99,6 +112,7 @@ def evaluation(model,
         logger.log({
                     'eval/perplexity': eval_ppl,
                     'eval/loss': eval_epoch_loss,
+                    'eval/metric': eval_metric,
                     }, commit=False)
 
     return eval_ppl, eval_epoch_loss
@@ -114,6 +128,7 @@ def train(model,
         accelerator,
         
     ):
+    # prepares data and models for distributed processing by moving them to chips
     model, optimizer, train_dataloader, eval_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler)
     ## delete
@@ -136,10 +151,18 @@ def train(model,
     total_train_steps = 0
     max_steps_reached = False  # Flag to indicate max training steps reached
 
-
+    # first eval
+    if run_eval:
+        eval_ppl, eval_epoch_loss = evaluation(model, eval_dataloader, tokenizer, train_config, logger, accelerator, -1)
+        print(f"start score, eval_ppl: {eval_ppl} | eval_epoch_loss: {eval_epoch_loss}")
+        if eval_epoch_loss < best_val_loss:
+            best_val_loss = eval_epoch_loss
+        
+        val_loss.append(float(best_val_loss))
+        val_prep.append(float(eval_ppl))
+    
     # Now we train the model
     for epoch in range(num_epochs):
-
         if max_steps_reached:
             break 
         epoch_start_time = time.perf_counter()
@@ -153,7 +176,7 @@ def train(model,
             if max_train_step > 0 and total_train_steps > max_train_step:
                 max_steps_reached = True
             # We could avoid this line since we set the accelerator with `device_placement=True`.
-            batch.to(accelerator.device)
+            batch = {k : v.to(accelerator.device) for k, v in batch.items()}
             outputs = model(**batch)
             loss = outputs.loss
             loss = loss / gradient_accumulation_steps

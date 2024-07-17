@@ -7,7 +7,6 @@ class train_config:
     tokenizer_name: str=None
 
     # low precision training 
-    
     mixed_precision: bool=True # 
     dtype: str="bfloat16" #alternative: fp32, fp16, bf16, fp8 w/mp, fp32, bf16 w/o mp
     
@@ -28,15 +27,16 @@ class train_config:
     #train
     batch_size_training: int=1
     batching_strategy: str="padding" #alternative : packing, padding
+    context_length: int=4096 # model context length 
     gradient_accumulation_steps: int=4
     gradient_clipping: bool = False
     gradient_clipping_threshold: float = 1.0
-    num_epochs: int=1
+    num_epochs: int=5
     max_train_step: int=0
     num_train_exmaples: str = None # for debug
     
     use_anyprecision: bool = False 
-    use_kahan_summation: bool = True # use if optimizer == "Anypreciiso"
+    use_kahan_summation: bool = True # use if optimizer == "Anyprecison"
     lr: float=1e-4
     weight_decay: float=0.1
     gamma: float= 0.85
@@ -44,7 +44,7 @@ class train_config:
     
     
     # peft
-    peft_method: str = "prompt" # None, llama_adapter (Caution: llama_adapter is currently not supported with FSDP)
+    peft_method: str = "lora" # None, llama_adapter (Caution: llama_adapter is currently not supported with FSDP)
     use_peft: bool=True
     freeze_layers: bool = False
     num_freeze_layers: int = 1
@@ -55,7 +55,7 @@ class train_config:
     # distribution training or acceleration
     #enable_fsdp: bool=False
     use_fast_kernels: bool = False # Enable using SDPA from PyTroch Accelerated Transformers, make use Flash Attention and Xformer memory-efficient kernels
-    use_deepspeed: bool=True
+    use_deepspeed: bool=False
     
     # profile
     flop_counter: bool = False # Enable flop counter to measure model throughput, can not be used with pytorch profiler at the same time.

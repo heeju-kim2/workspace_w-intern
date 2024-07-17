@@ -4,10 +4,11 @@ from pathlib import Path
 
 import torch
 
-from dataset_srcs import get_samsum_dataset
+from dataset_srcs import get_samsum_dataset, get_alpaca_dataset
 
 DATASET_PREPROC = {
-    "samsum_dataset": get_samsum_dataset,}
+    "samsum_dataset": get_samsum_dataset, 
+    "alpaca_dataset": get_alpaca_dataset,}
 
 
 def get_preprocessed_dataset(
@@ -27,5 +28,5 @@ def get_preprocessed_dataset(
         dataset_config,
         tokenizer,
         get_split(),
-        10,
+        #10,
     )

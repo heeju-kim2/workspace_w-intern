@@ -1,0 +1,97 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.14
+    cli_version: 0.17.0
+    framework: huggingface
+    huggingface_version: 4.42.4
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1721017491
+    t:
+      1:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      - 71
+      - 98
+      - 100
+      - 105
+      2:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      - 71
+      - 98
+      - 100
+      - 105
+      3:
+      - 17
+      - 18
+      - 23
+      - 37
+      - 62
+      4: 3.10.14
+      5: 0.17.0
+      6: 4.42.4
+      8:
+      - 5
+      13: linux-x86_64
+peft_type:
+  desc: null
+  value: PeftType.PROMPT_TUNING
+auto_mapping:
+  desc: null
+  value: null
+base_model_name_or_path:
+  desc: null
+  value: meta-llama/Llama-2-7b-hf
+revision:
+  desc: null
+  value: null
+task_type:
+  desc: null
+  value: CAUSAL_LM
+inference_mode:
+  desc: null
+  value: false
+num_virtual_tokens:
+  desc: null
+  value: 32
+token_dim:
+  desc: null
+  value: 4096
+num_transformer_submodules:
+  desc: null
+  value: 1
+num_attention_heads:
+  desc: null
+  value: 32
+num_layers:
+  desc: null
+  value: 32
+prompt_tuning_init:
+  desc: null
+  value: PromptTuningInit.RANDOM
+prompt_tuning_init_text:
+  desc: null
+  value: Please summarize the following conversation.
+tokenizer_name_or_path:
+  desc: null
+  value: null
+tokenizer_kwargs:
+  desc: null
+  value: null
+encoder_hidden_size:
+  desc: null
+  value: 4096

@@ -11,7 +11,7 @@ from peft import get_peft_model, prepare_model_for_kbit_training
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
-
+from data.concatenator import ConcatDataset
 
 from configs import train_config as TRAIN_CONFIG
 from policies import AnyPrecisionAdamW
@@ -51,7 +51,7 @@ The script can be run in any of the following configurations:
 
 """
 
-def setup_wandb(**kwargs):
+def setup_wandb(train_config):
     try:
         import wandb
     except ImportError:
@@ -61,7 +61,19 @@ def setup_wandb(**kwargs):
         )
     from configs import wandb_config as WANDB_CONFIG
     wandb_config = WANDB_CONFIG()
-    update_config(wandb_config, **kwargs)
+    update_config(wandb_config, **dataclasses.asdict(train_config))
+    
+    init_dict = dataclasses.asdict(wandb_config)
+    run = wandb.init(**init_dict)
+
+    # show configurations
+    mode = "mixed" if train_config.mixed_precision else "normal"
+    dtype = train_config.dtype
+    
+    run.tags =[mode, dtype]
+    run.name = f"run_ep_{train_config.num_epochs}_lr_{train_config.lr}_bs_{train_config.batch_size_training * train_config.gradient_accumulation_steps}_wd_{train_config.weight_decay}"
+
+    return run 
         
 
 def set_seed(seed: int):
@@ -129,19 +141,21 @@ def main(args):
                             if train_config.use_deepspeed else None
     mixed_precision =MIXED_PSN_DTYPE[train_config.dtype] if train_config.mixed_precision else None
     fp8_kwargs = [FP8RecipeKwargs(backend="te")] if train_config.dtype == "fp8" else None
+    
     accelerator = Accelerator(mixed_precision=mixed_precision,
                               deepspeed_plugin=deepspeed_plugin,
                               kwargs_handlers=fp8_kwargs)
     
-    wandb_run = setup_wandb(train_config, fsdp_config) if train_config.use_wandb else None
+    wandb_run = setup_wandb(train_config) if train_config.use_wandb else None
 
     model = AutoModelForCausalLM.from_pretrained(
             train_config.model_name,
             load_in_8bit=True if train_config.quantization else None,
-            device_map="auto",
-            use_cache=None,
+            device_map=None if int(os.environ["WORLD_SIZE"]) > 1 else "auto",
+            use_cache=True,
             torch_dtype=train_config.dtype,
             attn_implementation="sdpa" if train_config.use_fast_kernels else None,
+            trust_remote_code=True,
         )
     
     tokenizer = AutoTokenizer.from_pretrained(train_config.model_name)
@@ -185,8 +199,6 @@ def main(args):
         for k,v in results.items():
             wandb_run.summary[k] = v
     
-
-
 def get_args():
     parser = argparse.ArgumentParser(description="low precision finetuning")
     parser.add_argument(
@@ -211,6 +223,14 @@ def get_args():
         "--use_anyprecision", 
         action="store_true",
         help="if false, use torch.optim.optimizer"
+    )
+    
+    parser.add_argument(
+        "--peft_method",
+        type=str, 
+        default="lora",
+        help="set peft method",
+        choices=["lora", "prompt", "adalora", "prefix", "boft"], 
     )
 
     args = parser.parse_args()
