@@ -19,14 +19,15 @@ class train_config:
     run_eval: bool=True
     eval_batch_size: int=1
     max_eval_step: int=0
+    eval_metric: str="rouge" # rouge for samsum,
 
     #dataloader
-    dataset = "samsum_dataset" # alternative : alpaca_dataset
+    dataset = "samsum_dataset" #"samsum_dataset" # alternative : alpaca_dataset
     num_workers_dataloader: int=2
 
     #train
-    batch_size_training: int=1
-    batching_strategy: str="padding" #alternative : packing, padding
+    batch_size_training: int=8
+    batching_strategy: str="packing" #alternative : packing, padding
     context_length: int=4096 # model context length 
     gradient_accumulation_steps: int=4
     gradient_clipping: bool = False
@@ -41,7 +42,6 @@ class train_config:
     weight_decay: float=0.1
     gamma: float= 0.85
     seed: int=42
-    
     
     # peft
     peft_method: str = "lora" # None, llama_adapter (Caution: llama_adapter is currently not supported with FSDP)
@@ -62,4 +62,6 @@ class train_config:
     flop_counter_start: int = 3 # The step to start profiling, default is 3, which means after 3 steps of warmup stage, the profiler will start to count flops.
     use_profiler: bool = False # Enable pytorch profiler, can not be used with flop counter at the same time.
     profiler_dir: str = "PATH/to/save/profiler/results" # will be used if using profiler
-     
+    
+    # debug
+    debug_n_example: int = 5

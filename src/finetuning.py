@@ -85,22 +85,23 @@ def set_seed(seed: int):
     else:
         torch.cuda.manual_seed_all(seed)
 
-def get_dataloader(train_config, tokenizer, split="train"):
-    dataset_config = generate_dataset_config(train_config)
+def get_dataloader(config, tokenizer, split="train", do_eval=False):
+    dataset_config = generate_dataset_config(config)
     dataset = get_preprocessed_dataset(
         tokenizer,
         dataset_config, 
         split=split,
+        do_eval=do_eval,
     )
     
-    if train_config.batching_strategy == "packing":
-        dataset = ConcatDataset(dataset, chunk_size=train_config.context_length)
+    if config.batching_strategy == "packing":
+        dataset = ConcatDataset(dataset, chunk_size=config.context_length)
     print(f"dataset length = {len(dataset)}")
 
-    dl_kwargs = get_dataloader_kwargs(train_config, dataset, tokenizer, split)
+    dl_kwargs = get_dataloader_kwargs(config, dataset, tokenizer, split)
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        num_workers=train_config.num_workers_dataloader,
+        num_workers=config.num_workers_dataloader,
         pin_memory=True,
         **dl_kwargs,
     )
@@ -176,7 +177,7 @@ def main(args):
     
 
     train_dataloader = get_dataloader(train_config, tokenizer, "train")
-    eval_dataloader = get_dataloader(train_config, tokenizer, "val") if train_config.run_eval else None
+    eval_dataloader = get_dataloader(train_config, tokenizer, "validation") if train_config.run_eval else None
     
     model = model.to(accelerator.device)
     
@@ -231,6 +232,21 @@ def get_args():
         default="lora",
         help="set peft method",
         choices=["lora", "prompt", "adalora", "prefix", "boft"], 
+    )
+
+    parser.add_argument(
+        "--output_dir", 
+        type=str,
+        default="outputs",
+        help="set model outputs dir",
+
+    )
+
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="samsum_dataset",
+        help="choose dataset to train",
     )
 
     args = parser.parse_args()

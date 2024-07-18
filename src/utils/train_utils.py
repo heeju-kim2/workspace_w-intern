@@ -13,6 +13,9 @@ from torch.nn.utils import clip_grad_norm_
 from accelerate.utils import is_xpu_available
 import evaluate
 import numpy as np
+
+from peft.utils import get_peft_model_state_dict
+
 # from utils.memory_utils import MemoryTrace
 # from utils.flop_utils import FlopMeasure
 
@@ -46,6 +49,7 @@ def print_model_size(model, config, rank: int = 0) -> None:
         total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"\n--> {config.model_name} has {total_params / 1e6} Million params\n")
 
+
 def evaluation(model, 
               eval_dataloader, 
               tokenizer, 
@@ -59,9 +63,7 @@ def evaluation(model,
     model.eval()
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
-
-    metric = evaluate.load("rouge") ##TODO(HJ) need to change
-
+    
     for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
         total_eval_steps += 1
         if max_eval_step > 0 and total_eval_steps > max_eval_step:
@@ -74,36 +76,7 @@ def evaluation(model,
             outputs = model(**batch)
             loss = outputs.loss
             eval_loss += loss.detach().float()
-        predictions = outputs.logits.argmax(dim=-1)
-        
-        # gather all inferences across chips
-        accelerator.wait_for_everyone()
 
-        ##(TODO)HJ multigpu gather inference 
-        # predictions = accelerator.pad_across_processes(
-        #         predictions, dim=1, pad_index=tokenizer.pad_token_id)
-
-        # references = accelerator.pad_across_processes(
-        #         batch['labels'], dim=1, pad_index=tokenizer.pad_token_id).detach().cpu().numpy()
- 
-        references= torch.where(batch['labels'] != -100, batch['labels'], tokenizer.pad_token_id)
-        predictions= torch.where(batch['labels'] != -100, predictions, tokenizer.pad_token_id)
-
-        predictions = tokenizer.batch_decode(predictions.detach().cpu().numpy(), skip_special_tokens=True)
-        references = tokenizer.batch_decode(references.detach().cpu().numpy(), skip_special_tokens=True)
-        
-        if step < 3:
-            print("predictions", predictions)
-            print("references", references)
-        
-        predictions, references = accelerator.gather_for_metrics((predictions, references))
-        metric.add_batch(
-            predictions=predictions,
-            references=references,
-        )
-    eval_metric = metric.compute()
-    # Use accelerator.print to print only on the main process.
-    accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
 
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     eval_ppl = torch.exp(eval_epoch_loss)
@@ -112,7 +85,6 @@ def evaluation(model,
         logger.log({
                     'eval/perplexity': eval_ppl,
                     'eval/loss': eval_epoch_loss,
-                    'eval/metric': eval_metric,
                     }, commit=False)
 
     return eval_ppl, eval_epoch_loss
@@ -126,8 +98,9 @@ def train(model,
         train_config,
         logger,
         accelerator,
-        
     ):
+
+    model.train()
     # prepares data and models for distributed processing by moving them to chips
     model, optimizer, train_dataloader, eval_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler)
@@ -160,6 +133,13 @@ def train(model,
         
         val_loss.append(float(best_val_loss))
         val_prep.append(float(eval_ppl))
+
+        ## save peft layers
+        accelerator.wait_for_everyone()
+        peft_state_dict = get_peft_model_state_dict(model)
+
+        output_dir = os.path.join(train_config.output_dir, f"epoch_{0}")
+        model.save_pretrained(output_dir)
     
     # Now we train the model
     for epoch in range(num_epochs):
@@ -209,18 +189,24 @@ def train(model,
         train_loss.append(float(train_epoch_loss))        
 
 
-
         if run_eval:
             eval_ppl, eval_epoch_loss = evaluation(model, eval_dataloader, tokenizer, train_config, logger, accelerator, epoch)
 
             if eval_epoch_loss < best_val_loss:
                 best_val_loss = eval_epoch_loss
                 accelerator.print(f"best eval loss on epoch {epoch+1} is {best_val_loss}")
+                # save model
+                ## save peft layers
+                accelerator.wait_for_everyone()
+                peft_state_dict = get_peft_model_state_dict(model)
+            
+                output_dir = os.path.join(train_config.output_dir, f"epoch_{epoch+1}")
+                accelerator.save_state(peft_state_dict)
+                
             val_loss.append(float(best_val_loss))
             val_prep.append(float(eval_ppl))
         accelerator.print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
-
-
+    
     results['avg_train_prep'] = sum(train_prep)/len(train_prep)
     results['avg_train_loss'] = sum(train_loss)/len(train_loss)
     results["avg_epoch_time"] = sum(epoch_times)/ len(epoch_times)
@@ -228,4 +214,7 @@ def train(model,
     if run_eval:
         results['avg_eval_prep'] = sum(val_prep)/len(val_prep)
         results['avg_eval_loss'] = sum(val_loss)/len(val_loss)
+
+    # end tracking
+    accelerator.end_training()
     return results
