@@ -27,4 +27,4 @@ class gsm8k_dataset:
     dataset: str = "gsm8k_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    few_shot: str = "none" # EM, test, train in few_shot으로 각각 few_shot 여부 결정
+    few_shot: str = "none"

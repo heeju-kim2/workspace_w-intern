@@ -13,7 +13,10 @@ from torch.nn.utils import clip_grad_norm_
 from accelerate.utils import is_xpu_available
 import evaluate
 import numpy as np
-from utils.eval_utils import rouge_for_samsum
+from utils.eval_utils import (
+    rouge_for_samsum,
+    em_for_gsm8k
+)
 from peft import get_peft_model_state_dict
 # from utils.memory_utils import MemoryTrace
 # from utils.flop_utils import FlopMeasure
@@ -83,6 +86,8 @@ def evaluation(model,
     
     if train_config.dataset == "samsum_dataset":
         eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator, logger)
+    elif train_config.dataset == "gsm8k_dataset":
+        eval_metric = em_for_gsm8k(train_config, tokenizer, logger, full=True)
     
     # Use accelerator.print to print only on the main process.
     accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
