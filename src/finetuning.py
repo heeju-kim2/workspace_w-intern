@@ -73,7 +73,7 @@ def setup_wandb(train_config):
     dtype = train_config.dtype
     
     run.tags =[mode, dtype]
-    run.name = f"run_ep_{train_config.num_epochs}_lr_{train_config.lr}_bs_{train_config.batch_size_training * train_config.gradient_accumulation_steps}_wd_{train_config.weight_decay}"
+    run.name = train_config.output_dir
 
     return run 
         
@@ -135,11 +135,6 @@ def main(**args):
     update_config(train_config, **args)
 
     set_seed(train_config.seed)
-
-    dset = train_config.dataset.split("_")[0]
-    train_config.output_dir = f"{dset}_outputs/Llama-2-7b-chat-hf/{train_config.dtype}/{train_config.peft_method}"
-    if not os.path.exists(train_config.output_dir):
-        os.makedirs(train_config.output_dir)
     
     #if not train_config.enable_fsdp:
 
@@ -179,7 +174,7 @@ def main(**args):
         model = prepare_model_for_kbit_training(model)
 
     if train_config.use_peft:
-        peft_config = generate_peft_config(train_config, **args) 
+        peft_config = generate_peft_config(train_config, **args)
         model = get_peft_model(model, peft_config)
 
         model.print_trainable_parameters()
@@ -210,43 +205,6 @@ def main(**args):
     if train_config.use_wandb:
         for k,v in results.items():
             wandb_run.summary[k] = v
-    
-def get_args():
-    parser = argparse.ArgumentParser(description="low precision finetuning")
-    parser.add_argument(
-        "--mixed_precision", 
-        action="store_true",
-        help="if False, use normal precision following 'dtype'" 
-    )
-    parser.add_argument(
-        "--dtype", 
-        type=str,
-        default="None",
-        choices=["None", "float16", "bfloat16", "float8", "float32"],
-    )
-    
-    parser.add_argument(
-        "--model_name", 
-        default="meta-llama/Llama-2-7b-hf",
-        required=True,
-        help="enter hf model name"   
-    )
-    parser.add_argument(
-        "--use_anyprecision", 
-        action="store_true",
-        help="if false, use torch.optim.optimizer"
-    )
-    
-    parser.add_argument(
-        "--peft_method",
-        type=str, 
-        default="lora",
-        help="set peft method",
-        choices=["lora", "prompt", "adalora", "prefix", "boft"], 
-    )
-
-    args = parser.parse_args()
-    return args
 
 if __name__ == "__main__":
 

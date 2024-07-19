@@ -11,14 +11,20 @@ from dataset_srcs.samsum_dataset import get_preprocessed_samsum_for_rouge
 from dataset_srcs.gsm8k_dataset import get_gsm8k_dataset, find_number
 
 
-def rouge_for_samsum(train_config, model, tokenizer, accelerator, wandb_run):
+def rouge_for_samsum(train_config, model, tokenizer, accelerator):
     rouge_dataset, summaries = get_preprocessed_samsum_for_rouge(dataset_config=None, tokenizer=tokenizer)
+
+    rouge_config = copy.deepcopy(train_config)
+    rouge_config.batching_strategy = "padding"
+    rouge_config.eval_batch_size = 15
+
+    rouge_dl_kwargs = get_dataloader_kwargs(rouge_config, rouge_dataset, tokenizer, "val")
+
     lengths = [len(d['input_ids']) for d in rouge_dataset]
     ids = np.argsort(lengths, kind='mergesort')
 
     metric = evaluate.load('rouge')
 
-    rouge_dl_kwargs = get_dataloader_kwargs(train_config, rouge_dataset, tokenizer, "val")
     rouge_loader = torch.utils.data.DataLoader(
         rouge_dataset,
         num_workers=train_config.num_workers_dataloader,
@@ -61,7 +67,7 @@ def rouge_for_samsum(train_config, model, tokenizer, accelerator, wandb_run):
     eval_metric = metric.compute()
     return eval_metric
 
-def em_for_gsm8k(train_config, model, tokenizer, wandb_run, full=False):
+def em_for_gsm8k(train_config, model, tokenizer, wandb_run, epoch, full=False):
     dataset_config = generate_dataset_config(train_config)
     em_dataset = get_gsm8k_dataset(dataset_config, tokenizer, split="EM")
     em_config = copy.deepcopy(train_config)
@@ -70,7 +76,7 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, full=False):
     ids = np.argsort(lengths, kind='mergesort')
 
     em_config.batching_strategy = "padding"
-    em_config.val_batch_size = 15 if train_config.few_shot == "none" else 5
+    em_config.eval_batch_size = 15 if not full else train_config.eval_batch_size
 
     em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
     em_dataloader = torch.utils.data.DataLoader(
@@ -113,19 +119,18 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, full=False):
         em_dict.append({
             'input ' : em_inputs[idx],
             'output' : p[len(em_inputs[idx]): ],
+            'orgn_out' : p,
             'answer' : em_labels[ids[idx]],
             'extracted ans' : em_ans,
         })
 
         idx += 1
     
-    t = time.time()
-    with open(train_config.output_dir + f'/em_res{t}.json', 'w') as f :
+    with open(train_config.output_dir + f'/em_res_epoch{epoch}.json', 'w') as f :
         json.dump(em_dict, f, indent=4)
     
-    if wandb_run:
-        wandb_run.log({
-            'EM_split' if not full else "EM" : num_correct / num_eval
-        })
+    eval_metric = {'EM_split' if not full else "EM" : num_correct / num_eval}
 
     print("EM: ", num_correct / num_eval)
+
+    return eval_metric

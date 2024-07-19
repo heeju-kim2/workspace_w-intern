@@ -31,7 +31,7 @@ class prompt_config:
      num_virtual_tokens: int=32
      prompt_tuning_init_text: str = "Please summarize the following conversation."
      # prompt_tuning_init: str = "TEXT"
-     # tokenizer_name_or_path: str = "meta-llama/Llama-2-7b-chat-hf"
+     tokenizer_name_or_path: str = "models/Llama-2-7b-chat-hf"
 
 @dataclass
 class adalora_config:

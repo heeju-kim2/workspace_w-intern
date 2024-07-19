@@ -85,9 +85,9 @@ def evaluation(model,
         accelerator.wait_for_everyone()
     
     if train_config.dataset == "samsum_dataset":
-        eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator, logger)
+        eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator)
     elif train_config.dataset == "gsm8k_dataset":
-        eval_metric = em_for_gsm8k(train_config, tokenizer, logger, full=True)
+        eval_metric = em_for_gsm8k(train_config, model, tokenizer, logger, epoch=curr_train_epoch, full=curr_train_epoch+1==train_config.num_epochs)
     
     # Use accelerator.print to print only on the main process.
     accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
@@ -151,7 +151,7 @@ def train(model,
     # Now we train the model
     for epoch in range(num_epochs):
         if max_steps_reached:
-            break 
+            break
         epoch_start_time = time.perf_counter()
         model.train()
         total_loss = 0.0
@@ -162,6 +162,7 @@ def train(model,
             total_train_steps += 1
             if max_train_step > 0 and total_train_steps > max_train_step:
                 max_steps_reached = True
+                break
             # We could avoid this line since we set the accelerator with `device_placement=True`.
             batch = {k : v.to(accelerator.device) for k, v in batch.items()}
             outputs = model(**batch)
@@ -183,7 +184,9 @@ def train(model,
                     'train/epoch': epoch + 1,
                     'train/step': epoch * len(train_dataloader) + step,
                     'train/loss': loss.detach().float(),})
-                
+
+            clear_gpu_cache()
+            accelerator.free_memory()
             pbar.set_description(f"Training Epoch: {epoch+1}/{num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()})")
         pbar.close()
         epoch_end_time = time.perf_counter()-epoch_start_time
@@ -193,9 +196,7 @@ def train(model,
         train_perplexity = torch.exp(train_epoch_loss)
 
         train_prep.append(float(train_perplexity))
-        train_loss.append(float(train_epoch_loss))        
-
-
+        train_loss.append(float(train_epoch_loss))
 
         if run_eval:
             eval_ppl, eval_epoch_loss = evaluation(model, eval_dataloader, tokenizer, train_config, logger, accelerator, epoch)
@@ -206,7 +207,7 @@ def train(model,
             val_loss.append(float(best_val_loss))
             val_prep.append(float(eval_ppl))
 
-                        ## save peft layers
+            ## save peft layers
             accelerator.wait_for_everyone()
             peft_state_dict = get_peft_model_state_dict(model)
             output_dir = os.path.join(train_config.output_dir, f"epoch_{0}")
