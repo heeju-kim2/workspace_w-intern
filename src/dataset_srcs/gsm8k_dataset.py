@@ -34,7 +34,7 @@ Q: Olivia has $23. She bought five bagels for $3 each. How much money does she h
 A: She bought 5 bagels for $3 each. This means she spent 5 * $3 = $15 on the bagels. She had $23 in beginning, so now she has $23 - $15 = $8. The answer is 8."""
 
 def read_jsonl(path: str):
-    path = 'workspace_w-intern/src/dataset_srcs/gsm8k' + path
+    path = 'workspace_w-intern/src/dataset_srcs/gsm8k/' + path
     with open(path) as fh:
         return [json.loads(line) for line in fh.readlines() if line]
 

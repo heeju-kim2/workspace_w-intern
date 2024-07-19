@@ -12,12 +12,12 @@ class train_config:
     
     # log and save
     output_dir: str = "prompt_tuning"
-    use_wandb: bool = True # Enable wandb for experient tracking
+    use_wandb: bool = False # Enable wandb for experient tracking
     save_metrics: bool = False # saves training metrics to a json file for later plotting
 
     # eval 
     run_eval: bool=True
-    eval_batch_size: int=15
+    eval_batch_size: int=1
     max_eval_step: int=0
 
     #dataloader

@@ -130,9 +130,9 @@ def get_optimizer_scheduler(train_config, model):
     return optimizer, lr_scheduler
 
 
-def main(args):
+def main(**args):
     train_config = TRAIN_CONFIG()
-    update_config(train_config, **vars(args))
+    update_config(train_config, **args)
 
     set_seed(train_config.seed)
 
@@ -160,11 +160,11 @@ def main(args):
             load_in_8bit=True if train_config.quantization else None,
             device_map=None if int(os.environ["WORLD_SIZE"]) > 1 else "auto",
             use_cache=True,
-            torch_dtype=train_config.dtype,
+            torch_dtype=ANY_PSN_DTYPE[train_config.dtype],
             attn_implementation="sdpa" if train_config.use_fast_kernels else None,
             trust_remote_code=True,
         )
-    
+
     tokenizer = AutoTokenizer.from_pretrained(train_config.model_name, padding_side='left')
     # tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
@@ -179,7 +179,7 @@ def main(args):
         model = prepare_model_for_kbit_training(model)
 
     if train_config.use_peft:
-        peft_config = generate_peft_config(train_config, **vars(args)) 
+        peft_config = generate_peft_config(train_config, **args) 
         model = get_peft_model(model, peft_config)
 
         model.print_trainable_parameters()
@@ -250,6 +250,6 @@ def get_args():
 
 if __name__ == "__main__":
 
-    args = get_args()
-    main(args)
-    # fire.Fire(main)
+    # args = get_args()
+    # main(args)
+    fire.Fire(main)

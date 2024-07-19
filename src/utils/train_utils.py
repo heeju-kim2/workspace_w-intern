@@ -80,27 +80,6 @@ def evaluation(model,
         
         # gather all inferences across chips
         accelerator.wait_for_everyone()
-
-        ##(TODO)HJ multigpu gather inference 
-        # predictions = accelerator.pad_across_processes(
-        #         predictions, dim=1, pad_index=tokenizer.pad_token_id)
-
-        # references = accelerator.pad_across_processes(
-        #         batch['labels'], dim=1, pad_index=tokenizer.pad_token_id).detach().cpu().numpy()
-        # print(batch['labels'].shape)
-        # print(batch['input_ids'].shape)
-        # print(predictions.shape)
-        # references= torch.where(batch['labels'] != -100, batch['labels'], tokenizer.pad_token_id)
-        # predictions= torch.where(batch['labels'] != -100, predictions, tokenizer.pad_token_id)
-
-        # predictions = tokenizer.batch_decode(predictions.detach().cpu().numpy(), skip_special_tokens=True)
-        # references = tokenizer.batch_decode(references.detach().cpu().numpy(), skip_special_tokens=True)
-        
-        # if step < 3:
-        #     print("predictions", predictions)
-        #     print("references", references)
-        
-        # predictions, references = accelerator.gather_for_metrics((predictions, references))
     
     if train_config.dataset == "samsum_dataset":
         eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator, logger)
