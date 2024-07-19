@@ -25,7 +25,7 @@ class train_config:
     num_workers_dataloader: int=2
 
     #train
-    batch_size_training: int=15
+    batch_size_training: int=1
     batching_strategy: str="padding" #alternative : packing, padding
     context_length: int=4096 # model context length 
     gradient_accumulation_steps: int=4
