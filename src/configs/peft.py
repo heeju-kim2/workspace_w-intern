@@ -21,6 +21,8 @@ class llama_adapter_config:
 #CAUTION prefix tuning is currently not supported
 @dataclass
 class prefix_config:
+     encoder_hidden_size: int=768
+     prefix_projection: bool=True
      num_virtual_tokens: int=30
      task_type: str= "CAUSAL_LM"
 
@@ -30,7 +32,7 @@ class prompt_config:
      task_type: str = "CAUSAL_LM"
      num_virtual_tokens: int=32
      prompt_tuning_init_text: str = "Please summarize the following conversation."
-     # prompt_tuning_init: str = "TEXT"
+     prompt_tuning_init: str = "TEXT"
      tokenizer_name_or_path: str = "models/Llama-2-7b-chat-hf"
 
 @dataclass

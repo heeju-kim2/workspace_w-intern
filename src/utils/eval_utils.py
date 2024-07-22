@@ -39,7 +39,7 @@ def rouge_for_samsum(train_config, model, tokenizer, accelerator):
         batch = {k :v.to(accelerator.device) for k, v in batch.items()}
         with torch.no_grad():
             # outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
-            outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100)
+            outputs = model.generate(input_ids=batch['input_ids'].to('cuda:0'), max_new_tokens=100, num_beams=1, do_sample=False)
 
         # gather all inferences across chips
         accelerator.wait_for_everyone()
@@ -95,7 +95,7 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, epoch, full=False):
         batch[key] = batch[key].to('cuda:0')
 
         with torch.no_grad():
-            outputs = model.generate(input_ids=batch['input_ids'], max_new_tokens=300)
+            outputs = model.generate(input_ids=batch['input_ids'], max_new_tokens=300, num_beams=1, do_sample=False)
         
         # preds = torch.argmax(outputs.logits, -1)
         em_preds.extend(
@@ -112,7 +112,7 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, epoch, full=False):
     idx = 0
     em_dict = []
     for p in em_preds:
-        em_ans = find_number(p)
+        em_ans = find_number(p[len(em_inputs[idx]): ])
         if em_ans == em_labels[ids[idx]]:
             num_correct += 1
         

@@ -79,7 +79,6 @@ def evaluation(model,
             outputs = model(**batch)
             loss = outputs.loss
             eval_loss += loss.detach().float()
-        predictions = outputs.logits.argmax(dim=-1)
         
         # gather all inferences across chips
         accelerator.wait_for_everyone()
@@ -100,7 +99,7 @@ def evaluation(model,
                     'eval/perplexity': eval_ppl,
                     'eval/loss': eval_epoch_loss,
                     'eval/metric': eval_metric,
-                    }, commit=False)
+                    })
 
     return eval_ppl, eval_epoch_loss
 
@@ -171,11 +170,11 @@ def train(model,
             total_loss += loss.detach().float()
             accelerator.backward(loss)
 
-            if step % gradient_accumulation_steps == 0:
+            if (step + 1) % gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
                 if gradient_clipping and gradient_clipping_threshold > 0.0:
                     clip_grad_norm_(model.parameters(), gradient_clipping_threshold)
                 optimizer.step()
-                lr_scheduler.step()
+                print(lr_scheduler.get_lr())
                 optimizer.zero_grad()
                 pbar.update(1)
 
@@ -185,9 +184,11 @@ def train(model,
                     'train/step': epoch * len(train_dataloader) + step,
                     'train/loss': loss.detach().float(),})
 
-            clear_gpu_cache()
-            accelerator.free_memory()
+            # clear_gpu_cache()
+            # accelerator.free_memory()
             pbar.set_description(f"Training Epoch: {epoch+1}/{num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()})")
+
+        lr_scheduler.step()
         pbar.close()
         epoch_end_time = time.perf_counter()-epoch_start_time
         epoch_times.append(epoch_end_time)
@@ -210,8 +211,9 @@ def train(model,
             ## save peft layers
             accelerator.wait_for_everyone()
             peft_state_dict = get_peft_model_state_dict(model)
-            output_dir = os.path.join(train_config.output_dir, f"epoch_{0}")
+            output_dir = os.path.join(train_config.output_dir, f"epoch_{epoch}")
             model.save_pretrained(output_dir)
+            print(f"Epoch {epoch+1}: eval_ppl: {eval_ppl} | eval_epoch_loss: {eval_epoch_loss}")
         accelerator.print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
 
 
