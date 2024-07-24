@@ -10,7 +10,7 @@ from peft import get_peft_model, prepare_model_for_kbit_training
 
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig
 from data.concatenator import ConcatDataset
 
 from configs import train_config as TRAIN_CONFIG
@@ -130,6 +130,16 @@ def get_optimizer_scheduler(train_config, model):
     return optimizer, lr_scheduler
 
 
+def get_bnb_config(train_config):
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type='nf4',
+        bnb_4bit_compute_dtype=ANY_PSN_DTYPE[train_config.dtype],
+    )
+
+    return bnb_config
+
 def main(**args):
     train_config = TRAIN_CONFIG()
     update_config(train_config, **args)
@@ -150,9 +160,12 @@ def main(**args):
     
     wandb_run = setup_wandb(train_config) if train_config.use_wandb else None
 
+
+
     model = AutoModelForCausalLM.from_pretrained(
             train_config.model_name,
             load_in_8bit=True if train_config.quantization else None,
+            quantization_config=get_bnb_config(train_config) if train_config.qlora else None,
             device_map=None if int(os.environ["WORLD_SIZE"]) > 1 else "auto",
             use_cache=True,
             torch_dtype=ANY_PSN_DTYPE[train_config.dtype],

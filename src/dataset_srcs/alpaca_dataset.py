@@ -26,16 +26,16 @@ PROMPT_DICT = {
 class InstructionDataset(Dataset):
     def __init__(self, dataset_config, tokenizer, partition="train", num_examples=None):
         #self.ann = json.load(open(dataset_config.data_path))
-        f = open(dataset_config.data_path)
-        self.ann = [json.loads(i) for i in f.readlines()]
+        # f = open(dataset_config.data_path)
+        # self.ann = [json.loads(i) for i in f.readlines()]
+        self.ann = load_dataset("tatsu-lab/alpaca")["train"]
         #self.ann = load_dataset(dataset_config.data_path)['train']
-        print(len(self.ann))
-        if partition == "train":
+        # if partition == "train":
             
-            self.ann = self.ann[200:] if not num_examples else self.ann[-num_examples:]
-            #print(len(self.ann))
-        else:
-            self.ann = self.ann[:200] if not num_examples else self.ann[:num_examples]
+        #     self.ann = self.ann[200:] if not num_examples else self.ann[-num_examples:]
+        #     #print(len(self.ann))
+        # else:
+        #     self.ann = self.ann[:200] if not num_examples else self.ann[:num_examples]
             #print(len(self.ann))
         self.tokenizer = tokenizer
 

@@ -7,7 +7,7 @@ class train_config:
     tokenizer_name: str=None
 
     # low precision training 
-    mixed_precision: bool=True # 
+    mixed_precision: bool=False # 
     dtype: str="bfloat16" #alternative: fp32, fp16, bf16, fp8 w/mp, fp32, bf16 w/o mp
     
     # log and save
@@ -48,6 +48,7 @@ class train_config:
     use_peft: bool=True
     freeze_layers: bool = False
     num_freeze_layers: int = 1
+    qlora: bool=False
 
     # quantization 
     quantization: bool = False

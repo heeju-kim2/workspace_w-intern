@@ -89,7 +89,7 @@ def evaluation(model,
         eval_metric = em_for_gsm8k(train_config, model, tokenizer, logger, epoch=curr_train_epoch, full=curr_train_epoch+1==train_config.num_epochs)
     
     # Use accelerator.print to print only on the main process.
-    accelerator.print(f"epoch {curr_train_epoch}:", eval_metric)
+    accelerator.print(f"epoch {curr_train_epoch + 1}:", eval_metric)
 
     eval_epoch_loss = eval_loss / len(eval_dataloader)
     eval_ppl = torch.exp(eval_epoch_loss)
@@ -174,7 +174,6 @@ def train(model,
                 if gradient_clipping and gradient_clipping_threshold > 0.0:
                     clip_grad_norm_(model.parameters(), gradient_clipping_threshold)
                 optimizer.step()
-                print(lr_scheduler.get_lr())
                 optimizer.zero_grad()
                 pbar.update(1)
 
@@ -184,8 +183,8 @@ def train(model,
                     'train/step': epoch * len(train_dataloader) + step,
                     'train/loss': loss.detach().float(),})
 
-            # clear_gpu_cache()
-            # accelerator.free_memory()
+            clear_gpu_cache()
+            accelerator.free_memory()
             pbar.set_description(f"Training Epoch: {epoch+1}/{num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()})")
 
         lr_scheduler.step()
@@ -210,10 +209,13 @@ def train(model,
 
             ## save peft layers
             accelerator.wait_for_everyone()
-            peft_state_dict = get_peft_model_state_dict(model)
-            output_dir = os.path.join(train_config.output_dir, f"epoch_{epoch}")
-            model.save_pretrained(output_dir)
+
             print(f"Epoch {epoch+1}: eval_ppl: {eval_ppl} | eval_epoch_loss: {eval_epoch_loss}")
+
+        peft_state_dict = get_peft_model_state_dict(model)
+        output_dir = os.path.join(train_config.output_dir, f"epoch_{epoch}")
+        model.save_pretrained(output_dir)
+    
         accelerator.print(f"Epoch {epoch+1}: train_perplexity={train_perplexity:.4f}, train_epoch_loss={train_epoch_loss:.4f}, epoch time {epoch_end_time}s")
 
 

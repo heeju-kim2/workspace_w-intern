@@ -76,7 +76,7 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, epoch, full=False):
     ids = np.argsort(lengths, kind='mergesort')
 
     em_config.batching_strategy = "padding"
-    em_config.eval_batch_size = 15 if not full else train_config.eval_batch_size
+    em_config.eval_batch_size = 15
 
     em_dl_kwargs = get_dataloader_kwargs(em_config, em_dataset, tokenizer, "val")
     em_dataloader = torch.utils.data.DataLoader(
@@ -126,11 +126,11 @@ def em_for_gsm8k(train_config, model, tokenizer, wandb_run, epoch, full=False):
 
         idx += 1
     
-    with open(train_config.output_dir + f'/em_res_epoch{epoch}.json', 'w') as f :
+    with open(train_config.output_dir + f'/em_res_epoch{epoch+1}.json', 'w') as f :
         json.dump(em_dict, f, indent=4)
     
     eval_metric = {'EM_split' if not full else "EM" : num_correct / num_eval}
 
-    print("EM: ", num_correct / num_eval)
+    # print("EM: ", num_correct / num_eval)
 
     return eval_metric
