@@ -136,6 +136,7 @@ def train(model,
     best_val_loss = float("inf")
     total_train_steps = 0
     max_steps_reached = False  # Flag to indicate max training steps reached
+    total_update_steps = 0
 
     # first eval
     if run_eval:
@@ -174,6 +175,11 @@ def train(model,
                 if gradient_clipping and gradient_clipping_threshold > 0.0:
                     clip_grad_norm_(model.parameters(), gradient_clipping_threshold)
                 optimizer.step()
+
+                if train_config.peft_method == "adalora":
+                    total_update_steps += 1
+                    model.update_and_allocate(total_update_steps)
+
                 optimizer.zero_grad()
                 pbar.update(1)
 

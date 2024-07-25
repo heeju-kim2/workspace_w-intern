@@ -38,10 +38,14 @@ class prompt_config:
 @dataclass
 class adalora_config:
      task_type: str = "CAUSAL_LM"
-     r: int = 8
-     lora_alpha: int=32
-     target_modules: List[int] = field(default_factory=lambda: ['q_proj', 'v_proj'])
-     lora_dropout: float=0.01
+     target_r: int = 64
+     init_r: int = 96
+     tinit: int = 1
+     tfinal: int = 190
+     deltaT: int = 100
+     lora_alpha: int=256
+     target_modules: List[int] = field(default_factory=lambda: ["k_proj", "q_proj", "v_proj", "out_proj", "fc1", "fc2"],)
+     lora_dropout: float=0.05
      
 @dataclass
 class boft_config:

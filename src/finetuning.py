@@ -201,6 +201,14 @@ def main(**args):
     model = model.to(accelerator.device)
     
     optimizer, lr_scheduler = get_optimizer_scheduler(train_config, model)
+
+    if train_config.peft_method == "adalora":
+        import math
+        ada_config = model.peft_config[model.trainable_adapter_name]
+        ada_config.total_step = math.ceil(len(train_dataloader) / train_config.gradient_accumulation_steps) * train_config.num_epochs
+        ada_config.tinit = math.ceil(ada_config.total_step * 0.1)
+        ada_config.tfinal = math.ceil(ada_config.total_step * 0.3)
+        # print(model.peft_config)
     
     results = train(
         model=model,
