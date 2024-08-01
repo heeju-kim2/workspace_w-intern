@@ -3,6 +3,7 @@ import time
 import yaml
 from contextlib import nullcontext
 from pathlib import Path
+import gc 
 
 import torch
 from tqdm import tqdm
@@ -10,12 +11,11 @@ import json
 
 #from model_checkpointing import save_model_checkpoint, save_optimizer_checkpoint
 from torch.nn.utils import clip_grad_norm_
-from accelerate.utils import is_xpu_available
+from accelerate.utils import is_xpu_available, release_memory
 import evaluate
 import numpy as np
-
 from peft.utils import get_peft_model_state_dict
-
+import math
 # from utils.memory_utils import MemoryTrace
 # from utils.flop_utils import FlopMeasure
 
@@ -104,6 +104,7 @@ def train(model,
     # prepares data and models for distributed processing by moving them to chips
     model, optimizer, train_dataloader, eval_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler)
+    
     ## delete
     num_epochs = train_config.num_epochs
     gradient_accumulation_steps = train_config.gradient_accumulation_steps
@@ -150,14 +151,16 @@ def train(model,
         total_loss = 0.0
         total_length = len(train_dataloader) // gradient_accumulation_steps
         pbar = tqdm(colour="blue", desc=f"Training Epoch: {epoch+1}", total=total_length, dynamic_ncols=True)
-            
+        
         for step, batch in enumerate(train_dataloader):
+            
             total_train_steps += 1
             if max_train_step > 0 and total_train_steps > max_train_step:
                 max_steps_reached = True
             # We could avoid this line since we set the accelerator with `device_placement=True`.
-            batch = {k : v.to(accelerator.device) for k, v in batch.items()}
-            outputs = model(**batch)
+            #batch = {k : v.to(accelerator.device) for k, v in batch.items()}
+
+            outputs = model(**batch.to(accelerator.device))
             loss = outputs.loss
             loss = loss / gradient_accumulation_steps
             total_loss += loss.detach().float()
@@ -167,7 +170,14 @@ def train(model,
                 if gradient_clipping and gradient_clipping_threshold > 0.0:
                     clip_grad_norm_(model.parameters(), gradient_clipping_threshold)
                 optimizer.step()
-                lr_scheduler.step()
+
+                # Update the importance of low-rank matrices
+                # and allocate the budget accordingly.
+                # This is only needed for AdaLora.
+                # Note that this requires parameter gradients.
+                # Hence being called before optimizer.zero_grad().
+                if train_config.use_peft and train_config.peft_method == "adalora":
+                    model.update_and_allocate(global_step) 
                 optimizer.zero_grad()
                 pbar.update(1)
 
@@ -176,9 +186,17 @@ def train(model,
                     'train/epoch': epoch + 1,
                     'train/step': epoch * len(train_dataloader) + step,
                     'train/loss': loss.detach().float(),})
-                
+            
             pbar.set_description(f"Training Epoch: {epoch+1}/{num_epochs}, step {step}/{len(train_dataloader)} completed (loss: {loss.detach().float()})")
+            #clear_device_cache()
+            clear_gpu_cache() 
+            accelerator.free_memory()
+            
+            del loss
+            del batch
         pbar.close()
+        # Steplr step per epoch
+        lr_scheduler.step()
         epoch_end_time = time.perf_counter()-epoch_start_time
         epoch_times.append(epoch_end_time)
 
@@ -198,10 +216,8 @@ def train(model,
                 # save model
                 ## save peft layers
                 accelerator.wait_for_everyone()
-                peft_state_dict = get_peft_model_state_dict(model)
-            
                 output_dir = os.path.join(train_config.output_dir, f"epoch_{epoch+1}")
-                accelerator.save_state(peft_state_dict)
+                model.save_pretrained(train_config.output_dir)
                 
             val_loss.append(float(best_val_loss))
             val_prep.append(float(eval_ppl))
@@ -214,7 +230,14 @@ def train(model,
     if run_eval:
         results['avg_eval_prep'] = sum(val_prep)/len(val_prep)
         results['avg_eval_loss'] = sum(val_loss)/len(val_loss)
-
+    
+    if not run_eval:
+        ## save peft layers
+        accelerator.wait_for_everyone()
+        peft_state_dict = get_peft_model_state_dict(model)
+        model.save_pretrained(train_config.output_dir)
+        #accelerator.save_model(model, save_directory=train_config.output_dir)
+        
     # end tracking
     accelerator.end_training()
     return results

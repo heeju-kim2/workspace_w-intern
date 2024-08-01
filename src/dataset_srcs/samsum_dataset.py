@@ -39,15 +39,19 @@ def get_preprocessed_samsum(dataset_config, tokenizer, split, num_examples=None,
             }
         return sample
 
-    dataset = dataset.map(tokenize_add_label, remove_columns=list(dataset.features))
-    
+    dataset = dataset.map(tokenize_add_label, remove_columns=list(dataset.features))    
     return dataset
-
 
 if __name__ == "__main__":
     from transformers import AutoTokenizer
+    import torch
     config=None
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-chat-hf")
     
     dataset = get_preprocessed_samsum(config, tokenizer, "validation", 2, True)
+
+    dataloader = torch.utils.data.DataLoader(dataset, num_workers=2, pin_memory=True)
+    for batch in dataloader:
+        print(batch)
+        exit(0)    
     print(dataset[0])

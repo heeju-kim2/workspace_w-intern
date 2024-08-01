@@ -4,16 +4,24 @@ from pathlib import Path
 
 import torch
 
-from dataset_srcs import get_samsum_dataset, get_alpaca_dataset
+from dataset_srcs import (
+    get_samsum_dataset, 
+    get_alpaca_dataset,
+    get_preprocessed_redpajama_dataset,
+    )
 
 DATASET_PREPROC = {
     "samsum_dataset": get_samsum_dataset, 
-    "alpaca_dataset": get_alpaca_dataset,}
+    "alpaca_dataset": get_alpaca_dataset,
+    "alpaca_long_dataset" : get_alpaca_dataset,
+    "redpajama_dataset": get_preprocessed_redpajama_dataset, 
+    }
 
 
 def get_preprocessed_dataset(
-    tokenizer, dataset_config, split: str = "train", num_examples: int = None, do_eval: bool = False, 
+    tokenizer,dataset_config, split: str = "train", num_examples: int = None, do_eval: bool = False, 
 ) -> torch.utils.data.Dataset:
+
     if not dataset_config.dataset in DATASET_PREPROC:
         raise NotImplementedError(f"{dataset_config.dataset} is not (yet) implemented")
 
@@ -25,8 +33,8 @@ def get_preprocessed_dataset(
         )
 
     return DATASET_PREPROC[dataset_config.dataset](
-        dataset_config=dataset_config,
         tokenizer=tokenizer,
+        dataset_config=dataset_config, 
         split=get_split(),
         num_examples=num_examples,
         do_eval=do_eval,

@@ -12,33 +12,33 @@ class train_config:
     
     # log and save
     output_dir: str = "PATH/to/save/PEFT/model"
-    use_wandb: bool = False # Enable wandb for experient tracking
+    use_wandb: bool = True # Enable wandb for experient tracking
     save_metrics: bool = False # saves training metrics to a json file for later plotting
 
     # eval 
-    run_eval: bool=True
+    run_eval: bool=False
     eval_batch_size: int=1
     max_eval_step: int=0
     eval_metric: str="rouge" # rouge for samsum,
 
     #dataloader
-    dataset = "samsum_dataset" #"samsum_dataset" # alternative : alpaca_dataset
+    dataset = "redpajama_dataset" #"samsum_dataset" # alternative : alpaca_dataset, redpajama_dataset
     num_workers_dataloader: int=2
 
     #train
-    batch_size_training: int=8
-    batching_strategy: str="packing" #alternative : packing, padding
+    batch_size_training: int=1
+    batching_strategy: str="padding" #alternative : packing, padding
     context_length: int=4096 # model context length 
-    gradient_accumulation_steps: int=4
+    gradient_accumulation_steps: int=1
     gradient_clipping: bool = False
     gradient_clipping_threshold: float = 1.0
-    num_epochs: int=5
+    num_epochs: int=2
     max_train_step: int=0
     num_train_exmaples: str = None # for debug
     
     use_anyprecision: bool = False 
     use_kahan_summation: bool = True # use if optimizer == "Anyprecison"
-    lr: float=1e-4
+    lr: float=2e-5
     weight_decay: float=0.1
     gamma: float= 0.85
     seed: int=42
@@ -49,6 +49,14 @@ class train_config:
     freeze_layers: bool = False
     num_freeze_layers: int = 1
 
+    # longlora
+    use_flash_attn : bool = True
+    use_full_attn : bool = False 
+    model_type : str = "llama" #alternative : llama, gpt-neox
+    trainable_params : str = "embed,norm"
+    rope_scaling : int = 1 # 
+    model_max_length : int = None # target to expand
+
     # quantization 
     quantization: bool = False
 
@@ -56,6 +64,7 @@ class train_config:
     #enable_fsdp: bool=False
     use_fast_kernels: bool = False # Enable using SDPA from PyTroch Accelerated Transformers, make use Flash Attention and Xformer memory-efficient kernels
     use_deepspeed: bool=False
+    deepspeed_stage: int = 2 # offload
     
     # profile
     flop_counter: bool = False # Enable flop counter to measure model throughput, can not be used with pytorch profiler at the same time.
@@ -64,4 +73,5 @@ class train_config:
     profiler_dir: str = "PATH/to/save/profiler/results" # will be used if using profiler
     
     # debug
-    debug_n_example: int = 5
+    debug : bool = False
+    debug_n_example: int = 10000

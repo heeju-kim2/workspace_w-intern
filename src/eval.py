@@ -13,20 +13,14 @@ from utils.config_utils import (
 )
 
 from utils.dataset_utils import get_preprocessed_dataset
-
 from utils.eval_utils import (
     get_inference,
-    get_metrics, 
-    
+    get_metrics,    
 )
-
-
 from utils.train_utils import (
     clear_gpu_cache,
     print_model_size,
-
 )
-
 from finetuning import set_seed, get_dataloader
 
 """
@@ -40,7 +34,6 @@ def main(args):
     update_config(eval_config, **vars(args))
     
     set_seed(eval_config.seed)
-
     accelerator = Accelerator()
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -52,7 +45,7 @@ def main(args):
             attn_implementation="sdpa" if eval_config.use_fast_kernels else None,
             trust_remote_code=True,
         )
-    
+     
     if eval_config.use_peft:
         assert eval_config.peft_path is not None
         peft_config = PeftConfig.from_pretrained(eval_config.peft_path)
@@ -64,7 +57,6 @@ def main(args):
     tokenizer.pad_token_id = tokenizer.eos_token_id
     
     eval_dataloader = get_dataloader(eval_config, tokenizer, split="validation", do_eval=True)
-
     model = model.to(accelerator.device)
     
     results = get_inference(

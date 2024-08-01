@@ -1,2 +1,3 @@
 from dataset_srcs.samsum_dataset import get_preprocessed_samsum as get_samsum_dataset
 from dataset_srcs.alpaca_dataset import InstructionDataset as get_alpaca_dataset
+from dataset_srcs.redpajama_dataset import get_preprocessed_redpajama_dataset as get_preprocessed_redpajama_dataset

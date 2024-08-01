@@ -21,22 +21,30 @@ PROMPT_DICT = {
         "Write a response that appropriately completes the request.\n\n"
         "### Instruction:\n{instruction}\n\n### Response:"
     ),
+    "prompt_no_input_llama2":(
+        "[INST] <<SYS>>\n"
+        "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\n"
+        "If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n"
+        "<</SYS>> \n\n {instruction} [/INST]"
+    ),
+    "prompt_input_llama2": (
+        "[INST] <<SYS>>\n"
+        "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\n"
+        "If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n"
+        "<</SYS>> \n\n {instruction} \n{input} [/INST]"
+    ),
+    "prompt_llama2": "[INST]{instruction}[/INST]"
 }
 
 class InstructionDataset(Dataset):
-    def __init__(self, dataset_config, tokenizer, partition="train", num_examples=None):
-        #self.ann = json.load(open(dataset_config.data_path))
-        f = open(dataset_config.data_path)
-        self.ann = [json.loads(i) for i in f.readlines()]
-        #self.ann = load_dataset(dataset_config.data_path)['train']
-        print(len(self.ann))
-        if partition == "train":
-            
-            self.ann = self.ann[200:] if not num_examples else self.ann[-num_examples:]
-            #print(len(self.ann))
+    def __init__(self, dataset_config, tokenizer, split="train", num_examples=None, do_eval=False):
+        self.ann = json.load(open(dataset_config.data_path))
+        split = int(round(0.05 *len(self.ann)))
+ 
+        if split == "train":
+            self.ann = self.ann[split:] if not num_examples else self.ann[-num_examples:]
         else:
-            self.ann = self.ann[:200] if not num_examples else self.ann[:num_examples]
-            #print(len(self.ann))
+            self.ann = self.ann[:split] if not num_examples else self.ann[:num_examples]
         self.tokenizer = tokenizer
 
     def __len__(self):
@@ -47,9 +55,10 @@ class InstructionDataset(Dataset):
 
         ann = self.ann[index]
         if ann.get("input", "") == "":
-            prompt = PROMPT_DICT["prompt_no_input"].format_map(ann)
+            #(TODO)HJ need to set prompt per model-specific format 
+            prompt = PROMPT_DICT["prompt_no_input_llama2"].format_map(ann)
         else:
-            prompt = PROMPT_DICT["prompt_input"].format_map(ann)
+            prompt = PROMPT_DICT["prompt_no_input_llama2"].format_map(ann)
         example = prompt + ann["output"]
         prompt = torch.tensor(
             self.tokenizer.encode(prompt), dtype=torch.int64

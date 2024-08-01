@@ -49,6 +49,15 @@ class boft_config:
      boft_dropout : float = 0.1
      bias: str = "boft_only"
 
+@dataclass
+class longlora_config:
+     task_type: str = "CAUSAL_LM"
+     r: int = 8
+     lora_alpha : int = 16
+     target_modules: List[str] = field(default_factory=lambda: ['q_proj', 'v_proj', 'k_proj', 'o_proj'])
+     lora_dropout : int = 0
+     bias : str = "none"
+     
 # @dataclass
 # class reft_config:
 #      intervention = LoreftIntervention(embed_dim=4096 , low_rank_dimension=4) # llama-2-7b hidden_dim

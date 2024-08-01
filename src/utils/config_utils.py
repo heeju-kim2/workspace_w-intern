@@ -14,7 +14,8 @@ from configs import (
     train_config, 
     prompt_config, 
     adalora_config,
-    boft_config,)
+    boft_config,
+    longlora_config,)
 
 from peft import (
     LoraConfig,
@@ -30,6 +31,8 @@ from transformers.data import DataCollatorForSeq2Seq
 
 from data.sampler import LengthBasedBatchSampler
 from utils.dataset_utils import DATASET_PREPROC
+
+from transformers import WhisperProcessor
 
 def update_config(config, **kwargs):
     if isinstance(config, (tuple, list)):
@@ -49,6 +52,7 @@ def generate_peft_config(train_config, **kwargs):
         prompt_config, 
         adalora_config,
         boft_config,
+        longlora_config,
         #reft_config,
         )
     peft_configs = (
@@ -58,13 +62,13 @@ def generate_peft_config(train_config, **kwargs):
         PromptTuningConfig, 
         AdaLoraConfig,
         BOFTConfig,
+        LoraConfig,
         #ReftConfig, 
         )
     names = tuple(c.__name__.rstrip("_config") for c in configs)
 
     if train_config.peft_method not in names:
         raise RuntimeError(f"Peft config not found: {train_config.peft_method}")
-
 
     config = configs[names.index(train_config.peft_method)]()
 
@@ -87,11 +91,13 @@ def generate_dataset_config(train_config):
 def get_dataloader_kwargs(config, dataset, tokenizer, mode):
         kwargs = {}
         batch_size = config.batch_size_training if mode=="train" else config.eval_batch_size
+        kwargs["batch_size"] = batch_size
+        
         if config.batching_strategy == "padding":
-            kwargs["batch_sampler"] = LengthBasedBatchSampler(dataset, batch_size, drop_last=True, shuffle=mode=="train")
+            kwargs["batch_sampler"] = LengthBasedBatchSampler(dataset, batch_size, drop_last=True, shuffle=mode=="train") #if dataset != "redpajama" else None 
             kwargs["collate_fn"] = DataCollatorForSeq2Seq(tokenizer)
+
         elif config.batching_strategy == "packing":
-            kwargs["batch_size"] = batch_size
             kwargs["drop_last"] = True
             kwargs["collate_fn"] = default_data_collator
         else:

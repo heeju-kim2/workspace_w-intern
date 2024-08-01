@@ -12,7 +12,7 @@ class eval_config:
     dtype: str = "float16"
 
     #dataloader
-    dataset: str = "samsum_dataset" #"samsum_dataset" # alternative : alpaca_dataset
+    dataset: str = "samsum_dataset" #"samsum_dataset" # alternative : passkey_retrieval, 
     num_workers_dataloader: int=2
     batching_strategy: str = "padding" #alternative : packing, padding
     eval_batch_size: int=1

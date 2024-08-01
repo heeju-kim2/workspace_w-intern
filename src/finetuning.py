@@ -4,9 +4,12 @@ import dataclasses
 import fire
 import random
 import numpy as np
+import transformers 
 import torch
 import torch.optim as optim
 from peft import get_peft_model, prepare_model_for_kbit_training
+from copy import deepcopy
+import math
 
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
@@ -24,12 +27,14 @@ from utils.config_utils import (
 )
 
 from utils.dataset_utils import get_preprocessed_dataset
-
 from utils.train_utils import (
     train,
     clear_gpu_cache,
     print_model_size,  
 )
+
+from longlora.llama_attn_replace import replace_llama_attn
+from longlora.gptneox_attn_replace import replace_gpt_neox_attn
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import is_xpu_available, FP8RecipeKwargs
@@ -88,16 +93,17 @@ def set_seed(seed: int):
 def get_dataloader(config, tokenizer, split="train", do_eval=False):
     dataset_config = generate_dataset_config(config)
     dataset = get_preprocessed_dataset(
-        tokenizer,
-        dataset_config, 
+        dataset_config=dataset_config,
+        tokenizer=tokenizer,
         split=split,
         do_eval=do_eval,
+        num_examples=config.debug_n_example if config.debug else None, 
     )
-    
-    if config.batching_strategy == "packing":
-        dataset = ConcatDataset(dataset, chunk_size=config.context_length)
-    print(f"dataset length = {len(dataset)}")
 
+    if config.batching_strategy == "packing":
+        dataset = ConcatDataset(dataset, chunk_size=config.max_context_length)
+    
+    print(f"dataset length = {len(dataset)}")
     dl_kwargs = get_dataloader_kwargs(config, dataset, tokenizer, split)
     dataloader = torch.utils.data.DataLoader(
         dataset,
@@ -129,15 +135,61 @@ def get_optimizer_scheduler(train_config, model):
     return optimizer, lr_scheduler
 
 
+def get_rope_scaling_factor(train_config):
+    # Set RoPE scaling factor
+    config = AutoConfig.from_pretrained(
+        train_config.model_name,
+        cache_dir=train_config.output_dir,
+    )
+
+    orig_rope_scaling_factor = train_config.rope_scaling
+    orig_ctx_len = train_config.context_length
+    orig_ctx_len *= orig_rope_scaling_factor
+    # expand original context_length to model_max_length
+    if train_config.model_max_length > orig_ctx_len:
+        scaling_factor = float(math.ceil(train_config.model_max_length / orig_ctx_len))
+        config.rope_scaling = {"type": "linear", "factor": scaling_factor}
+    return config
+
+def replace_full_to_sparse_attn(train_config):
+    # longlora    
+    if train_config.use_peft and train_config.peft_method == "longlora":
+        # NOTE(LongLoRA): May expand supported model types in the future
+        if train_config.model_type == "gpt-neox":
+            replace_gpt_neox_attn(train_config.use_flash_attn, train_config.use_full_attn)
+        else:
+            assert train_config.model_type == "llama", "Only support llama and gpt-neox for now"
+            replace_llama_attn(train_config.use_flash_attn, train_config.use_full_attn)
+
+def set_gradient_checkpointing(model, train_config):
+    # enable trainable params
+    #[p.requires_grad_() for n, p in model.named_parameters() if any([k in n for k in train_config.trainable_params.split(",")])]
+
+    model.config.use_cache = False         # required for gradient checkpointing
+    model.enable_input_require_grads()     # required for gradient checkpointing
+    model.gradient_checkpointing_enable()  # enable gradient checkpointing
+    return model
+
+def check_config_dependency(train_config):
+    if train_config.use_peft and train_config.peft_method == "longlora":
+        assert train_config.model_max_length >= train_config.context_length
+        assert train_config.use_full_attn == False
+        assert train_config.batching_strategy == "padding"
+        assert train_config.run_eval == False #TODO(HJ) need to be fixed
+    
+    if train_config.dataset in ["alpaca", "alpaca_long"]:
+        train_config.run_eval = False
+    else:
+        train_config.model_max_length = deepcopy(train_config.context_length)
+
 def main(args):
     train_config = TRAIN_CONFIG()
     update_config(train_config, **vars(args))
-
+    check_config_dependency(train_config)    
+ 
     set_seed(train_config.seed)
-    
-    #if not train_config.enable_fsdp:
-
-    deepspeed_plugin = DeepSpeedPlugin(zero_stage=2, 
+ 
+    deepspeed_plugin = DeepSpeedPlugin(zero_stage=train_config.deepspeed_stage, 
                             gradient_accumulation_steps=train_config.gradient_accumulation_steps) \
                             if train_config.use_deepspeed else None
     mixed_precision =MIXED_PSN_DTYPE[train_config.dtype] if train_config.mixed_precision else None
@@ -148,22 +200,34 @@ def main(args):
                               kwargs_handlers=fp8_kwargs)
     
     wandb_run = setup_wandb(train_config) if train_config.use_wandb else None
-
+    
+    replace_full_to_sparse_attn(train_config) # if use longlora 
+    config = get_rope_scaling_factor(train_config)
+    
     model = AutoModelForCausalLM.from_pretrained(
             train_config.model_name,
+            config=config, 
             load_in_8bit=True if train_config.quantization else None,
-            device_map=None if int(os.environ["WORLD_SIZE"]) > 1 else "auto",
-            use_cache=True,
+            device_map=None, #if int(os.environ["WORLD_SIZE"]) > 1 else "auto",
+            #use_cache=True,
             torch_dtype=train_config.dtype,
             attn_implementation="sdpa" if train_config.use_fast_kernels else None,
             trust_remote_code=True,
         )
     
-    tokenizer = AutoTokenizer.from_pretrained(train_config.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(
+                train_config.model_name,
+                model_max_length=train_config.model_max_length,
+                #padding_side="right", 
+                use_fast=True,)
     tokenizer.pad_token_id = tokenizer.eos_token_id
     
+    if train_config.model_max_length > train_config.context_length:
+        print(f"extend model context_length:{train_config.context_length} into {train_config.model_max_length}")
+        # also 
+        model.resize_token_embeddings(len(tokenizer))
+    
     print_model_size(model, train_config)
-
     if train_config.quantization:
         model = prepare_model_for_kbit_training(model)
 
@@ -175,12 +239,12 @@ def main(args):
         if wandb_run:
             wandb_run.config.update(peft_config)
     
-
     train_dataloader = get_dataloader(train_config, tokenizer, "train")
     eval_dataloader = get_dataloader(train_config, tokenizer, "validation") if train_config.run_eval else None
-    
+
+
+    model = set_gradient_checkpointing(model, train_config) if train_config.peft_method == "longlora" else model        
     model = model.to(accelerator.device)
-    
     optimizer, lr_scheduler = get_optimizer_scheduler(train_config, model)
     
     results = train(
@@ -199,7 +263,7 @@ def main(args):
     if train_config.use_wandb:
         for k,v in results.items():
             wandb_run.summary[k] = v
-    
+ 
 def get_args():
     parser = argparse.ArgumentParser(description="low precision finetuning")
     parser.add_argument(
@@ -231,7 +295,7 @@ def get_args():
         type=str, 
         default="lora",
         help="set peft method",
-        choices=["lora", "prompt", "adalora", "prefix", "boft"], 
+        choices=["lora", "prompt", "adalora", "prefix", "boft", "longlora"], 
     )
 
     parser.add_argument(
@@ -239,7 +303,6 @@ def get_args():
         type=str,
         default="outputs",
         help="set model outputs dir",
-
     )
 
     parser.add_argument(
@@ -247,6 +310,19 @@ def get_args():
         type=str,
         default="samsum_dataset",
         help="choose dataset to train",
+    )
+
+    parser.add_argument(
+        "--model_max_length",
+        type=int, 
+        default=None,
+        help="model max length to extend using longlora",
+    )
+
+    parser.add_argument(
+        "--debug", 
+        action="store_true",
+        help="debug mode on. if true then load only a few examples",
     )
 
     args = parser.parse_args()

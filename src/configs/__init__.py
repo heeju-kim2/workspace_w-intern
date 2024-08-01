@@ -4,8 +4,9 @@ from configs.peft import (
     prefix_config, 
     prompt_config, 
     adalora_config,
-    boft_config,)
-from configs.fsdp import fsdp_config
+    boft_config,
+    longlora_config,)
+#from configs.fsdp import fsdp_config
 from configs.training import train_config
 from configs.wandb import wandb_config
 from configs.eval import eval_config
