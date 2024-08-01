@@ -25,18 +25,11 @@ PROMPT_DICT = {
 
 class InstructionDataset(Dataset):
     def __init__(self, dataset_config, tokenizer, partition="train", num_examples=None):
-        #self.ann = json.load(open(dataset_config.data_path))
-        # f = open(dataset_config.data_path)
-        # self.ann = [json.loads(i) for i in f.readlines()]
-        self.ann = load_dataset("tatsu-lab/alpaca")["train"]
-        #self.ann = load_dataset(dataset_config.data_path)['train']
-        # if partition == "train":
-            
-        #     self.ann = self.ann[200:] if not num_examples else self.ann[-num_examples:]
-        #     #print(len(self.ann))
-        # else:
-        #     self.ann = self.ann[:200] if not num_examples else self.ann[:num_examples]
-            #print(len(self.ann))
+        dataset = load_dataset("tatsu-lab/alpaca")["train"]
+        if partition == "train":
+            self.ann = torch.utils.data.Subset(dataset, range(100, len(dataset)))
+        elif partition == "validation":
+            self.ann = torch.utils.data.Subset(dataset, range(0, 100))
         self.tokenizer = tokenizer
 
     def __len__(self):

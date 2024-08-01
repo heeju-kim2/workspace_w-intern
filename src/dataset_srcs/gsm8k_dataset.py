@@ -5,6 +5,9 @@ import copy
 import torch
 
 
+B_INST, E_INST = "[INST]", "[/INST]"
+B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
+
 INVALID_ANS = "[invalid]"
 PREAMBLE = """As an expert problem solver solve step by step the following mathematical question. 
 At the end of steps, give the final answer in \" The answer is number.\" format."""
@@ -88,9 +91,13 @@ def is_correct(model_completion, gt_example):
 
 # Batch Econding
 class GSMDataset(torch.utils.data.Dataset):
-    def __init__(self, tokenizer, examples, loss_on_prefix=True, only_qns=False, few_shot=False):
+    def __init__(self, tokenizer, examples, loss_on_prefix=True, only_qns=False, few_shot=False, no_prompt=False):
         self.examples = examples
-        self.qns = [tokenizer.bos_token + " " + PREAMBLE + '\n' + (PROMPT if few_shot else "") + '\n' + TEMPLATE.format(question=ex["question"]) for ex in self.examples]
+        if not no_prompt:
+           self.qns = [tokenizer.bos_token + " " + B_INST + PREAMBLE + '\n' + (PROMPT if few_shot else "") + '\n' + TEMPLATE.format(question=ex["question"]) + E_INST for ex in self.examples]
+        else:
+           self.qns = [TEMPLATE.format(question=ex["question"]) for ex in self.examples]
+        # self.qns = [TEMPLATE.format(question=ex["question"]) for ex in self.examples]
         self.ans = [ex["answer"] + tokenizer.eos_token for ex in self.examples]
         self.qns = tokenizer(self.qns, padding=False)
         self.ans = tokenizer(self.ans, padding=False)
@@ -135,11 +142,13 @@ def get_gsm8k_dataset(
     else:
         examples = get_examples("test")
 
+    print("split: ", split, ", few_shot: ", few_shot)
     dataset = GSMDataset(
         tokenizer=tokenizer,
         examples=examples,
         only_qns=only_qns,
-        few_shot=few_shot
+        few_shot=few_shot,
+        no_prompt=dataset_config.no_prompt
     )
 
     return dataset

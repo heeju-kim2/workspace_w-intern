@@ -86,7 +86,7 @@ def evaluation(model,
     if train_config.dataset == "samsum_dataset":
         eval_metric = rouge_for_samsum(train_config, model, tokenizer, accelerator)
     elif train_config.dataset == "gsm8k_dataset":
-        eval_metric = em_for_gsm8k(train_config, model, tokenizer, logger, epoch=curr_train_epoch, full=curr_train_epoch+1==train_config.num_epochs)
+        eval_metric = em_for_gsm8k(train_config, model, tokenizer, logger, epoch=curr_train_epoch, full=True)
     
     # Use accelerator.print to print only on the main process.
     accelerator.print(f"epoch {curr_train_epoch + 1}:", eval_metric)

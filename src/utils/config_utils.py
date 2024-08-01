@@ -81,6 +81,7 @@ def generate_dataset_config(train_config):
     assert train_config.dataset in names, f"Unknown dataset: {train_config.dataset}"
     dataset_config = {k:v for k, v in inspect.getmembers(datasets)}[train_config.dataset]()
     dataset_config.few_shot = train_config.few_shot
+    dataset_config.no_prompt = train_config.no_prompt
 
     return  dataset_config
 

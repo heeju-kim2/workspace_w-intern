@@ -66,3 +66,4 @@ class train_config:
      
     # gsm8k
     few_shot: str = "none" # few_shot will be activated if EM, test, train in few_shot
+    no_prompt: bool = False # give no instruction prompt

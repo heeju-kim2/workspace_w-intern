@@ -64,7 +64,7 @@ def setup_wandb(train_config):
     update_config(wandb_config, **dataclasses.asdict(train_config))
     
     init_dict = dataclasses.asdict(wandb_config)
-    init_dict['project'] = train_config.dataset.split("_")[0]
+    init_dict['project'] = train_config.dataset.split("_")[0] + "_ablation"
     run = wandb.init(**init_dict)
     run.config.update(train_config)
 
@@ -207,7 +207,7 @@ def main(**args):
         ada_config = model.peft_config[model.trainable_adapter_name]
         ada_config.total_step = math.ceil(len(train_dataloader) / train_config.gradient_accumulation_steps) * train_config.num_epochs
         ada_config.tinit = math.ceil(ada_config.total_step * 0.1)
-        ada_config.tfinal = math.ceil(ada_config.total_step * 0.3)
+        ada_config.tfinal = math.ceil(ada_config.total_step * 0.45)
         # print(model.peft_config)
     
     results = train(
