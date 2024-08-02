@@ -43,7 +43,7 @@ class adalora_config:
      init_r: int = 96
      tinit: int = 1
      tfinal: int = 190
-     deltaT: int = 10
+     deltaT: int = 1
      lora_alpha: int=256
      beta1: float=0.85
      beta2: float=0.85

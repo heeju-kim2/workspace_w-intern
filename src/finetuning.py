@@ -187,12 +187,16 @@ def main(**args):
         model = prepare_model_for_kbit_training(model)
 
     if train_config.use_peft:
-        peft_config = generate_peft_config(train_config, **args)
-        model = get_peft_model(model, peft_config)
+        if train_config.from_peft_checkpoint:
+            model = PeftModel.from_pretrained(model, train_config.from_peft_checkpoint, is_trainable=True)
+            peft_config = model.peft_config
+        else:
+            peft_config = generate_peft_config(train_config, **args)
+            model = get_peft_model(model, peft_config)
 
         model.print_trainable_parameters()
         if wandb_run:
-            wandb_run.config.update(peft_config)
+            wandb_run.config.update(peft_config, allow_val_change=True)
     
 
     train_dataloader = get_dataloader(train_config, tokenizer, "train")

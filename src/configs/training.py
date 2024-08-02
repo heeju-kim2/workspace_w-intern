@@ -49,6 +49,9 @@ class train_config:
     freeze_layers: bool = False
     num_freeze_layers: int = 1
     qlora: bool=False
+    r:int = 64 # lora rank
+    target_r:int = 64
+    from_peft_checkpoint:str = ""
 
     # quantization 
     quantization: bool = False
