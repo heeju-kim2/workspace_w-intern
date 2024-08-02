@@ -160,8 +160,6 @@ def main(**args):
     
     wandb_run = setup_wandb(train_config) if train_config.use_wandb else None
 
-
-
     model = AutoModelForCausalLM.from_pretrained(
             train_config.model_name,
             load_in_8bit=True if train_config.quantization else None,
@@ -186,33 +184,32 @@ def main(**args):
     if train_config.quantization:
         model = prepare_model_for_kbit_training(model)
 
+    train_dataloader = get_dataloader(train_config, tokenizer, "train")
+    eval_dataloader = get_dataloader(train_config, tokenizer, "val") if train_config.run_eval else None    
+
     if train_config.use_peft:
         if train_config.from_peft_checkpoint:
             model = PeftModel.from_pretrained(model, train_config.from_peft_checkpoint, is_trainable=True)
             peft_config = model.peft_config
         else:
             peft_config = generate_peft_config(train_config, **args)
+            if train_config.peft_method == "adalora":
+                import math
+                ada_config = peft_config
+                ada_config.total_step = math.ceil(len(train_dataloader) / train_config.gradient_accumulation_steps) * train_config.num_epochs
+                ada_config.tinit = math.ceil(ada_config.total_step * 0.1)
+                ada_config.tfinal = math.ceil(ada_config.total_step * 0.45)
+                # print(model.peft_config)
+
             model = get_peft_model(model, peft_config)
 
         model.print_trainable_parameters()
         if wandb_run:
             wandb_run.config.update(peft_config, allow_val_change=True)
     
-
-    train_dataloader = get_dataloader(train_config, tokenizer, "train")
-    eval_dataloader = get_dataloader(train_config, tokenizer, "val") if train_config.run_eval else None
-    
     model = model.to(accelerator.device)
     
     optimizer, lr_scheduler = get_optimizer_scheduler(train_config, model)
-
-    if train_config.peft_method == "adalora":
-        import math
-        ada_config = model.peft_config[model.trainable_adapter_name]
-        ada_config.total_step = math.ceil(len(train_dataloader) / train_config.gradient_accumulation_steps) * train_config.num_epochs
-        ada_config.tinit = math.ceil(ada_config.total_step * 0.1)
-        ada_config.tfinal = math.ceil(ada_config.total_step * 0.45)
-        # print(model.peft_config)
     
     results = train(
         model=model,

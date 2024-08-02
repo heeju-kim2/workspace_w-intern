@@ -6,7 +6,7 @@ from typing import List
 class lora_config:
      r: int=64
      lora_alpha: int=64
-     # target_modules: List[str] = field(default_factory=lambda: ["k_proj", "q_proj", "v_proj", "out_proj", "fc1", "fc2"])
+     # target_modules: List[str] = field(default_factory=lambda: ["k_proj", "q_proj", "v_proj", "o_proj", "fc1", "fc2"])
      target_modules: List[str] = field(default_factory=lambda: ["v_proj", "q_proj"])
      bias= "none"
      task_type: str= "CAUSAL_LM"
@@ -48,7 +48,7 @@ class adalora_config:
      beta1: float=0.85
      beta2: float=0.85
      orth_reg_weight: float=0.1
-     target_modules: List[str] = field(default_factory=lambda: ["k_proj", "q_proj", "v_proj", "out_proj", "fc1", "fc2"],)
+     target_modules: List[str] = field(default_factory=lambda: ["v_proj","q_proj","k_proj","o_proj","gate_proj","up_proj","down_proj"],)
      lora_dropout: float=0.05
      bias= "none"
      inference_mode: bool=False
