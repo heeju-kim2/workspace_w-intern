@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 @dataclass
 class train_config:
@@ -52,6 +53,8 @@ class train_config:
     r:int = 64 # lora rank
     target_r:int = 64
     from_peft_checkpoint:str = ""
+    target_modules: List[str] = field(default_factory=lambda: ["v_proj", "q_proj"])
+
 
     # quantization 
     quantization: bool = False

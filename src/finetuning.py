@@ -6,7 +6,7 @@ import random
 import numpy as np
 import torch
 import torch.optim as optim
-from peft import get_peft_model, prepare_model_for_kbit_training
+from peft import get_peft_model, prepare_model_for_kbit_training, PeftModel
 
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
